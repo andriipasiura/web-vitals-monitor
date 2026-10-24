@@ -1,0 +1,10 @@
+{
+  "name": "@rum/shared",
+  "exports": [],
+  "dependencies": {
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

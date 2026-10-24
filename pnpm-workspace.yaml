@@ -1,0 +1,13 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+ignoredBuiltDependencies:
+  - sharp
+  - unrs-resolver
+
+catalog:
+  typescript: ~5.9.0
+  '@types/node': ^24.0.0
+  zod: ^4.0.0
+  eslint: ^9.0.0
