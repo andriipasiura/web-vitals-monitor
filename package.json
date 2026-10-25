@@ -8,11 +8,12 @@
     "node": ">=24"
   },
   "scripts": {
-    "dev": "pnpm -r --parallel --if-present dev",
+    "build:shared": "pnpm --filter @rum/shared build",
+    "dev": "pnpm build:shared && pnpm -r --parallel --if-present dev",
     "build": "pnpm -r --if-present build",
-    "lint": "pnpm -r --if-present --no-bail lint",
-    "typecheck": "pnpm -r --if-present --no-bail typecheck",
-    "test": "pnpm -r --if-present --no-bail test",
+    "lint": "pnpm build:shared && pnpm -r --if-present --no-bail lint",
+    "typecheck": "pnpm build:shared && pnpm -r --if-present --no-bail typecheck",
+    "test": "pnpm build:shared && pnpm -r --if-present --no-bail test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
