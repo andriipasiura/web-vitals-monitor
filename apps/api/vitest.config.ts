@@ -10,7 +10,15 @@ export default defineConfig({
       },
       {
         extends: true,
-        test: { name: 'e2e', include: ['test/**/*.e2e-spec.ts'] },
+        test: {
+          name: 'e2e',
+          include: ['test/**/*.e2e-spec.ts'],
+          globalSetup: ['test/global-setup.ts'],
+          setupFiles: ['test/setup-db.ts'],
+          // All files share one database and truncate it between tests.
+          fileParallelism: false,
+          hookTimeout: 60_000,
+        },
       },
     ],
   },

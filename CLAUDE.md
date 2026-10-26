@@ -14,4 +14,4 @@
 - Register global guards, pipes, filters and interceptors as APP_* providers, not app.useGlobal*.
 - Never use `import type` for a class injected through DI: it removes the runtime reference and breaks DI.
 - Read configuration through ConfigService, never process.env.
-- Abstractions: <abstract classes used as tokens | interfaces with Symbol tokens and @Inject>.
+- Abstractions: interfaces with Symbol tokens and @Inject (see EVENTS_REPOSITORY).
