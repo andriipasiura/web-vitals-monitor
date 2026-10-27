@@ -1,8 +1,10 @@
 import { Controller, Get, HttpStatus, Inject, Logger } from '@nestjs/common';
+import { Public } from '../auth/auth.decorators.js';
 import { sql } from 'drizzle-orm';
 import { ApiException } from '../common/errors/api-exception.js';
 import { DATABASE, type Database } from '../db/database.js';
 
+@Public()
 @Controller()
 export class HealthController {
   private readonly logger = new Logger(HealthController.name);

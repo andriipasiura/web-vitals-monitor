@@ -1,10 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import request from 'supertest';
+import type request from 'supertest';
 import type { ErrorResponseBody } from '../src/common/errors/all-exceptions.filter.js';
 import { EVENTS_REPOSITORY } from '../src/events/events.repository.js';
 import { InMemoryEventsRepository } from '../src/events/in-memory-events.repository.js';
 import { createTestApp } from './create-test-app.js';
+import { api, createApiKey, createProject, signUp } from './helpers.js';
+
+const ORIGIN = 'https://shop.example';
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -33,20 +36,100 @@ function expectError(
   return error;
 }
 
+interface Ingestion {
+  accessToken: string;
+  projectId: string;
+  key: string;
+  keyId: string;
+}
+
+async function setUpIngestion(
+  app: NestExpressApplication,
+  email = 'dev@example.com',
+): Promise<Ingestion> {
+  const { accessToken } = await signUp(app, email);
+  const { id: projectId } = await createProject(app, accessToken, {
+    name: 'Shop',
+    allowedOrigins: [ORIGIN],
+  });
+  const { key, id: keyId } = await createApiKey(app, accessToken, projectId);
+  return { accessToken, projectId, key, keyId };
+}
+
 describe('POST /v1/events (e2e)', () => {
   let app: NestExpressApplication;
   let repository: InMemoryEventsRepository;
+  let ingestion: Ingestion;
 
   beforeEach(async () => {
     app = await createTestApp();
     repository = app.get(EVENTS_REPOSITORY);
+    ingestion = await setUpIngestion(app);
   });
 
   afterEach(async () => {
     await app.close();
   });
 
-  const post = () => request(app.getHttpServer()).post('/v1/events');
+  const post = () =>
+    api(app)
+      .post('/v1/events')
+      .set('X-Api-Key', ingestion.key)
+      .set('Origin', ORIGIN);
+
+  describe('ingestion key and origin', () => {
+    const batch = () => ({ events: [event()] });
+    const bare = () => api(app).post('/v1/events').set('Origin', ORIGIN);
+
+    it('accepts a valid key and origin and tags events with the project', async () => {
+      await post().send(batch()).expect(202);
+      expect(repository.all()).toMatchObject([
+        { projectId: ingestion.projectId },
+      ]);
+    });
+
+    it('accepts the key as a query parameter for sendBeacon', async () => {
+      await bare()
+        .query({ key: ingestion.key })
+        .set('Content-Type', 'text/plain')
+        .send(JSON.stringify(batch()))
+        .expect(202);
+    });
+
+    it('rejects a missing or unknown key with 401', async () => {
+      expectError(await bare().send(batch()), 401, 'MISSING_API_KEY');
+      expectError(
+        await bare().set('X-Api-Key', 'pk_unknown').send(batch()),
+        401,
+        'INVALID_API_KEY',
+      );
+      expect(repository.all()).toHaveLength(0);
+    });
+
+    it('rejects a revoked key while a rotated-in key keeps working', async () => {
+      const replacement = await createApiKey(
+        app,
+        ingestion.accessToken,
+        ingestion.projectId,
+      );
+      await api(app)
+        .delete(`/v1/projects/${ingestion.projectId}/keys/${ingestion.keyId}`)
+        .auth(ingestion.accessToken, { type: 'bearer' })
+        .expect(204);
+
+      expectError(await post().send(batch()), 401, 'INVALID_API_KEY');
+      await bare().set('X-Api-Key', replacement.key).send(batch()).expect(202);
+    });
+
+    it.each(['https://evil.example', 'null', undefined])(
+      'rejects origin %s with 403',
+      async (origin) => {
+        const req = api(app).post('/v1/events').set('X-Api-Key', ingestion.key);
+        if (origin) req.set('Origin', origin);
+        expectError(await req.send(batch()), 403, 'ORIGIN_NOT_ALLOWED');
+      },
+    );
+  });
 
   describe('valid batches', () => {
     it('accepts application/json and stores enriched events', async () => {
@@ -223,8 +306,12 @@ describe('POST /v1/events when storage fails (e2e)', () => {
   });
 
   it('returns a generic 500 without internals', async () => {
-    const res = await request(app.getHttpServer())
+    const { key } = await setUpIngestion(app);
+
+    const res = await api(app)
       .post('/v1/events')
+      .set('X-Api-Key', key)
+      .set('Origin', ORIGIN)
       .send({ events: [event()] });
 
     expect(res.body).toEqual({

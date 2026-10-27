@@ -3,6 +3,8 @@ import { json } from 'express';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { ApiException } from '../errors/api-exception.js';
 
+export const DASHBOARD_BODY_LIMIT_BYTES = 16 * 1024;
+
 export interface JsonBodyParserOptions {
   limit: number;
   types: string[];

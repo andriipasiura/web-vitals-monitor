@@ -13,17 +13,25 @@ export class EventsService {
     @Inject(EVENTS_REPOSITORY) private readonly repository: EventsRepository,
   ) {}
 
-  async ingest(events: readonly WebVitalEvent[]): Promise<void> {
+  async ingest(
+    projectId: string,
+    events: readonly WebVitalEvent[],
+  ): Promise<void> {
     const receivedAt = new Date();
     await this.repository.saveMany(
-      events.map((event) => toStoredEvent(event, receivedAt)),
+      events.map((event) => toStoredEvent(projectId, event, receivedAt)),
     );
   }
 }
 
-function toStoredEvent(event: WebVitalEvent, receivedAt: Date): StoredEvent {
+function toStoredEvent(
+  projectId: string,
+  event: WebVitalEvent,
+  receivedAt: Date,
+): StoredEvent {
   return {
     ...event,
+    projectId,
     route: event.route ?? inferRouteTemplate(event.path),
     routeSource: event.route ? 'sdk' : 'server',
     rating: rateMetric(event.metric, event.value),

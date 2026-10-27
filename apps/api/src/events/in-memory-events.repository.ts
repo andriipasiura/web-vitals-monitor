@@ -7,9 +7,8 @@ export class InMemoryEventsRepository implements EventsRepository {
 
   saveMany(events: readonly StoredEvent[]): Promise<void> {
     for (const event of events) {
-      if (!this.events.has(event.clientEventId)) {
-        this.events.set(event.clientEventId, event);
-      }
+      const id = `${event.projectId}:${event.clientEventId}`;
+      if (!this.events.has(id)) this.events.set(id, event);
     }
     return Promise.resolve();
   }
