@@ -1,7 +1,7 @@
 import { Test, TestingModuleBuilder } from '@nestjs/testing';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from '../src/app.module.js';
-import { appOptions } from '../src/app.options.js';
+import { appOptions, configureApp } from '../src/app.options.js';
 
 export async function createTestApp(
   override?: (builder: TestingModuleBuilder) => TestingModuleBuilder,
@@ -12,6 +12,7 @@ export async function createTestApp(
     ...appOptions,
     logger: false,
   });
+  configureApp(app);
   await app.init();
   return app;
 }

@@ -1,8 +1,12 @@
+import { OriginSchema } from '@rum/shared';
 import { z } from 'zod';
 
 export const EnvSchema = z.object({
   PORT: z.coerce.number().default(3001),
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+  JWT_SECRET: z.string().min(32),
+  DASHBOARD_ORIGIN: OriginSchema,
+  COOKIE_SECURE: z.stringbool().default(true),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

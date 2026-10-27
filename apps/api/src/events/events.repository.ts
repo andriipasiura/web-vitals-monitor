@@ -5,6 +5,7 @@ export const EVENTS_REPOSITORY = Symbol('EVENTS_REPOSITORY');
 export type RouteSource = 'sdk' | 'server';
 
 export type StoredEvent = WebVitalEvent & {
+  projectId: string;
   route: string;
   routeSource: RouteSource;
   rating: Rating;

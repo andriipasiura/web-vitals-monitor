@@ -1,5 +1,6 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { MAX_BATCH_BODY_BYTES } from '@rum/shared';
+import { ApiKeysModule } from '../api-keys/api-keys.module.js';
 import { createJsonBodyParser } from '../common/body-parser/json-body-parser.js';
 import { EventsController } from './events.controller.js';
 import { EVENTS_REPOSITORY } from './events.repository.js';
@@ -7,6 +8,7 @@ import { EventsService } from './events.service.js';
 import { InMemoryEventsRepository } from './in-memory-events.repository.js';
 
 @Module({
+  imports: [ApiKeysModule],
   controllers: [EventsController],
   providers: [
     EventsService,
