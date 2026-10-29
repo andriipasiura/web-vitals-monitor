@@ -1,11 +1,17 @@
 import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
+  bigint,
   check,
+  doublePrecision,
   index,
+  integer,
+  jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
@@ -85,5 +91,61 @@ export const apiKeys = pgTable(
   (t) => [
     uniqueIndex('api_keys_hash_uq').on(t.keyHash),
     index('api_keys_project_idx').on(t.projectId),
+  ],
+);
+
+export const events = pgTable(
+  'events',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity(),
+    projectId: uuid('project_id').notNull(),
+    metric: text('metric').notNull(),
+    value: doublePrecision('value').notNull(),
+    rating: text('rating').notNull(),
+    path: text('path').notNull(),
+    route: text('route').notNull(),
+    routeSource: text('route_source').notNull(),
+    deviceType: text('device_type').notNull(),
+    connectionType: text('connection_type'),
+    release: text('release'),
+    attribution: jsonb('attribution').$type<Record<string, string | number>>(),
+    clientEventId: uuid('client_event_id').notNull(),
+    receivedAt: timestamp('received_at', { withTimezone: true }).notNull(),
+    clientTimestamp: timestamp('client_timestamp', { withTimezone: true }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.id, t.receivedAt] }),
+    index('events_project_route_metric_idx').on(t.projectId, t.route, t.metric),
+    index('events_received_at_brin').using('brin', t.receivedAt),
+  ],
+);
+
+export const eventRollupsHourly = pgTable(
+  'event_rollups_hourly',
+  {
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    metric: text('metric').notNull(),
+    route: text('route').notNull(),
+    deviceType: text('device_type').notNull(),
+    release: text('release'),
+    hour: timestamp('hour', { withTimezone: true }).notNull(),
+    count: integer('count').notNull(),
+    goodCount: integer('good_count').notNull(),
+    niCount: integer('ni_count').notNull(),
+    poorCount: integer('poor_count').notNull(),
+    sumValue: doublePrecision('sum_value').notNull(),
+    buckets: integer('buckets').array().notNull(),
+  },
+  (t) => [
+    unique('event_rollups_hourly_key')
+      .on(t.projectId, t.metric, t.route, t.deviceType, t.release, t.hour)
+      .nullsNotDistinct(),
+    index('event_rollups_hourly_project_metric_hour_idx').on(
+      t.projectId,
+      t.metric,
+      t.hour,
+    ),
   ],
 );

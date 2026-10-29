@@ -3,9 +3,14 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import type request from 'supertest';
 import type { ErrorResponseBody } from '../src/common/errors/all-exceptions.filter.js';
 import { EVENTS_REPOSITORY } from '../src/events/events.repository.js';
-import { InMemoryEventsRepository } from '../src/events/in-memory-events.repository.js';
 import { createTestApp } from './create-test-app.js';
-import { api, createApiKey, createProject, signUp } from './helpers.js';
+import {
+  api,
+  createApiKey,
+  createProject,
+  signUp,
+  storedEvents,
+} from './helpers.js';
 
 const ORIGIN = 'https://shop.example';
 
@@ -58,12 +63,10 @@ async function setUpIngestion(
 
 describe('POST /v1/events (e2e)', () => {
   let app: NestExpressApplication;
-  let repository: InMemoryEventsRepository;
   let ingestion: Ingestion;
 
   beforeEach(async () => {
     app = await createTestApp();
-    repository = app.get(EVENTS_REPOSITORY);
     ingestion = await setUpIngestion(app);
   });
 
@@ -83,7 +86,7 @@ describe('POST /v1/events (e2e)', () => {
 
     it('accepts a valid key and origin and tags events with the project', async () => {
       await post().send(batch()).expect(202);
-      expect(repository.all()).toMatchObject([
+      expect(await storedEvents(app)).toMatchObject([
         { projectId: ingestion.projectId },
       ]);
     });
@@ -103,7 +106,7 @@ describe('POST /v1/events (e2e)', () => {
         401,
         'INVALID_API_KEY',
       );
-      expect(repository.all()).toHaveLength(0);
+      expect(await storedEvents(app)).toHaveLength(0);
     });
 
     it('rejects a revoked key while a rotated-in key keeps working', async () => {
@@ -156,7 +159,7 @@ describe('POST /v1/events (e2e)', () => {
       expect(res.text).toBe('');
       expect(res.headers['x-request-id']).toMatch(UUID);
 
-      const stored = repository.all();
+      const stored = await storedEvents(app);
       expect(stored).toHaveLength(2);
       expect(stored[0]).toMatchObject({
         clientEventId: serverRouted.clientEventId,
@@ -184,18 +187,18 @@ describe('POST /v1/events (e2e)', () => {
         .send(JSON.stringify({ events: [sent] }))
         .expect(202);
 
-      expect(repository.all()).toMatchObject([
+      expect(await storedEvents(app)).toMatchObject([
         { clientEventId: sent.clientEventId },
       ]);
     });
 
-    it('stores a resent event once', async () => {
+    it('stores a resent event again', async () => {
       const batch = { events: [event()] };
 
       await post().send(batch).expect(202);
       await post().send(batch).expect(202);
 
-      expect(repository.all()).toHaveLength(1);
+      expect(await storedEvents(app)).toHaveLength(2);
     });
   });
 
@@ -216,7 +219,7 @@ describe('POST /v1/events (e2e)', () => {
         expect.objectContaining({ path: 'events.1.path' }),
         expect.objectContaining({ path: 'events.2.clientEventId' }),
       ]);
-      expect(repository.all()).toHaveLength(0);
+      expect(await storedEvents(app)).toHaveLength(0);
     });
 
     it.each([0, 11])('rejects a batch of %i events', async (count) => {

@@ -10,7 +10,7 @@ const pool = new Pool({ connectionString: databaseUrl });
 
 beforeEach(async () => {
   await pool.query(
-    'TRUNCATE users, refresh_tokens, projects, api_keys RESTART IDENTITY CASCADE',
+    'TRUNCATE users, refresh_tokens, projects, api_keys, events, event_rollups_hourly RESTART IDENTITY CASCADE',
   );
 });
 

@@ -12,7 +12,7 @@ import { refreshTokens, users } from '../db/schema.js';
 export const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 export const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-const ARGON2_OPTIONS = {
+export const ARGON2_OPTIONS = {
   algorithm: 2 as Algorithm,
   memoryCost: 19_456,
   timeCost: 2,
