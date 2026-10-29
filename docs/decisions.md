@@ -10,6 +10,17 @@ Phase 2: accounts, projects and ingestion keys.
 - **CORS:** dashboard routes allow only `DASHBOARD_ORIGIN`, with credentials. `POST /v1/events` allows any origin, because `ApiKeyGuard` checks the origin itself.
 - **Ingestion keys:** `pk_` + 32 random bytes, stored as a SHA-256 hash plus an 11-character prefix. The plaintext is returned once. New keys never revoke old ones. The key is sent as `X-Api-Key` or `?key=` (for `sendBeacon`); the header wins.
 
+Phase 3: event storage, rollups and the query API.
+
+- **Events table** is partitioned by `RANGE (received_at)`, one partition per UTC day, named `events_pYYYYMMDD`. `received_at` is server time and the main timestamp; `client_timestamp` exists but stays null until the SDK sends one. There is no default partition, so an insert outside the created range fails instead of piling up somewhere unmanaged.
+- **Partition maintenance** runs on startup and hourly: it creates today plus 7 days ahead and drops partitions whose whole range is older than 30 days. Dropping a partition is instant and leaves no dead tuples, unlike `DELETE`.
+- **No DB-level deduplication.** A unique constraint on a partitioned table must include the partition key, and `received_at` differs between retries of the same event, so `(project_id, client_event_id, received_at)` would never catch a duplicate. A resent event is stored twice. Deduplication by `client_event_id` moves to Phase 4 (Redis `SET NX` with a TTL).
+- **Ingestion** writes a batch as one multi-row `INSERT`, so it is stored entirely or not at all. `events.project_id` has no foreign key: the per-row check on the hot path and a cascade that would need a `project_id` index in every partition cost more than they protect. Rollups do have one, with `ON DELETE CASCADE`.
+- **Hourly rollups** (`event_rollups_hourly`) hold count, rating counts, sum and a histogram per (project, metric, route, device, release, hour), unique with `NULLS NOT DISTINCT` because release can be null. Every 5 minutes a job recomputes the last 3 hours from raw events and upserts, so reruns are idempotent and late events are absorbed.
+- **Histogram buckets** are `(lower, upper]` with per-metric edges in `@rum/shared` (`METRIC_BUCKET_BOUNDARIES`). Upper edges are inclusive so they agree with `rateMetric` (`value <= good` is good), and every good/poor threshold is an edge. Percentiles sum bucket arrays element-wise in SQL and interpolate linearly inside the bucket in TypeScript; percentiles are never averaged. A percentile in the open last bucket reports that bucket's lower edge.
+- **Scheduled jobs** run in the API with `@nestjs/schedule` until the worker exists (Phase 4). Each takes `pg_try_advisory_xact_lock` inside its transaction, so only one instance runs it and the lock cannot leak onto a pooled connection if the job throws.
+- **Query API**: `GET /v1/projects/:id/metrics` and `/routes` read rollups only; `/routes/paths` and `/routes/attribution` read raw events for the last 7 days only. Day granularity uses UTC days. Paths use keyset pagination on `(percentile desc, path asc)`; each page still aggregates the whole route, keyset only makes paging stable as events arrive. Attribution uses web-vitals v5 keys: `target` for LCP and `interactionTarget` for INP.
+
 ## Known limitations
 
 - **Origin can be forged outside browsers.** The allowlist only stops other websites from reusing a key copied from a page. A script can send any `Origin`, so with a public key anyone can submit events.
@@ -18,3 +29,6 @@ Phase 2: accounts, projects and ingestion keys.
 - No grace period on refresh: two tabs refreshing at once count as reuse.
 - Expired refresh tokens are never deleted.
 - Register reveals whether an email exists (`409 EMAIL_TAKEN`).
+- A deleted project's raw events stay until their partition is dropped (at most 30 days); every query is scoped to an owned project, so they are unreachable.
+- Rollups are never pruned yet.
+- If partition maintenance does not run for 7 days, ingestion starts failing.

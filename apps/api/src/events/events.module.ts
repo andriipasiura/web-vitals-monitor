@@ -5,14 +5,16 @@ import { createJsonBodyParser } from '../common/body-parser/json-body-parser.js'
 import { EventsController } from './events.controller.js';
 import { EVENTS_REPOSITORY } from './events.repository.js';
 import { EventsService } from './events.service.js';
-import { InMemoryEventsRepository } from './in-memory-events.repository.js';
+import { PartitionsService } from './partitions.service.js';
+import { DrizzleEventsRepository } from './drizzle-events.repository.js';
 
 @Module({
   imports: [ApiKeysModule],
   controllers: [EventsController],
   providers: [
     EventsService,
-    { provide: EVENTS_REPOSITORY, useClass: InMemoryEventsRepository },
+    PartitionsService,
+    { provide: EVENTS_REPOSITORY, useClass: DrizzleEventsRepository },
   ],
 })
 export class EventsModule implements NestModule {

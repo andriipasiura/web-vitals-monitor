@@ -46,15 +46,21 @@ export const AttributionSchema = z
   );
 export type Attribution = z.infer<typeof AttributionSchema>;
 
+export const RouteSchema = pathLike(EVENT_LIMITS.maxRouteLength);
+export const ReleaseSchema = z
+  .string()
+  .min(1)
+  .max(EVENT_LIMITS.maxReleaseLength);
+
 export const WebVitalEventSchema = z.object({
   clientEventId: z.uuid(),
   metric: MetricNameSchema,
   value: z.number().nonnegative(),
   path: pathLike(EVENT_LIMITS.maxPathLength),
-  route: pathLike(EVENT_LIMITS.maxRouteLength).optional(),
+  route: RouteSchema.optional(),
   deviceType: DeviceTypeSchema,
   connectionType: ConnectionTypeSchema.optional(),
-  release: z.string().min(1).max(EVENT_LIMITS.maxReleaseLength).optional(),
+  release: ReleaseSchema.optional(),
   attribution: AttributionSchema.optional(),
 });
 export type WebVitalEvent = z.infer<typeof WebVitalEventSchema>;
