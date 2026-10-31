@@ -2,12 +2,17 @@ import { randomUUID } from 'node:crypto';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import type request from 'supertest';
 import type { ErrorResponseBody } from '../src/common/errors/all-exceptions.filter.js';
+import { TestingModule } from '@nestjs/testing';
+import { EventsQueue } from '../src/events/events.queue.js';
 import { EVENTS_REPOSITORY } from '../src/events/events.repository.js';
-import { createTestApp } from './create-test-app.js';
+import { createTestApp, createTestWorker } from './create-test-app.js';
 import {
   api,
   createApiKey,
   createProject,
+  deadRedis,
+  drainQueue,
+  seedIngestionKey,
   signUp,
   storedEvents,
 } from './helpers.js';
@@ -65,14 +70,22 @@ describe('POST /v1/events (e2e)', () => {
   let app: NestExpressApplication;
   let ingestion: Ingestion;
 
+  let worker: TestingModule;
+
   beforeEach(async () => {
     app = await createTestApp();
+    worker = await createTestWorker();
     ingestion = await setUpIngestion(app);
   });
 
   afterEach(async () => {
-    await app.close();
+    await Promise.all([app.close(), worker.close()]);
   });
+
+  const stored = async () => {
+    await drainQueue(app);
+    return storedEvents(app);
+  };
 
   const post = () =>
     api(app)
@@ -86,7 +99,7 @@ describe('POST /v1/events (e2e)', () => {
 
     it('accepts a valid key and origin and tags events with the project', async () => {
       await post().send(batch()).expect(202);
-      expect(await storedEvents(app)).toMatchObject([
+      expect(await stored()).toMatchObject([
         { projectId: ingestion.projectId },
       ]);
     });
@@ -106,7 +119,7 @@ describe('POST /v1/events (e2e)', () => {
         401,
         'INVALID_API_KEY',
       );
-      expect(await storedEvents(app)).toHaveLength(0);
+      expect(await stored()).toHaveLength(0);
     });
 
     it('rejects a revoked key while a rotated-in key keeps working', async () => {
@@ -159,15 +172,15 @@ describe('POST /v1/events (e2e)', () => {
       expect(res.text).toBe('');
       expect(res.headers['x-request-id']).toMatch(UUID);
 
-      const stored = await storedEvents(app);
-      expect(stored).toHaveLength(2);
-      expect(stored[0]).toMatchObject({
+      const rows = await stored();
+      expect(rows).toHaveLength(2);
+      expect(rows[0]).toMatchObject({
         clientEventId: serverRouted.clientEventId,
         route: '/products/:id',
         routeSource: 'server',
         rating: 'poor',
       });
-      expect(stored[1]).toMatchObject({
+      expect(rows[1]).toMatchObject({
         clientEventId: sdkRouted.clientEventId,
         route: '/blog/[slug]',
         routeSource: 'sdk',
@@ -176,7 +189,7 @@ describe('POST /v1/events (e2e)', () => {
         release: '1.2.3',
         attribution: { largestShiftTarget: 'main > div.hero' },
       });
-      expect(stored[0]?.receivedAt).toBeInstanceOf(Date);
+      expect(rows[0]?.receivedAt).toBeInstanceOf(Date);
     });
 
     it('accepts JSON sent as text/plain (sendBeacon)', async () => {
@@ -187,18 +200,18 @@ describe('POST /v1/events (e2e)', () => {
         .send(JSON.stringify({ events: [sent] }))
         .expect(202);
 
-      expect(await storedEvents(app)).toMatchObject([
+      expect(await stored()).toMatchObject([
         { clientEventId: sent.clientEventId },
       ]);
     });
 
-    it('stores a resent event again', async () => {
+    it('stores a resent event once', async () => {
       const batch = { events: [event()] };
 
       await post().send(batch).expect(202);
       await post().send(batch).expect(202);
 
-      expect(await storedEvents(app)).toHaveLength(2);
+      expect(await stored()).toHaveLength(1);
     });
   });
 
@@ -219,7 +232,7 @@ describe('POST /v1/events (e2e)', () => {
         expect.objectContaining({ path: 'events.1.path' }),
         expect.objectContaining({ path: 'events.2.clientEventId' }),
       ]);
-      expect(await storedEvents(app)).toHaveLength(0);
+      expect(await stored()).toHaveLength(0);
     });
 
     it.each([0, 11])('rejects a batch of %i events', async (count) => {
@@ -293,38 +306,60 @@ describe('POST /v1/events (e2e)', () => {
   });
 });
 
-describe('POST /v1/events when storage fails (e2e)', () => {
-  let app: NestExpressApplication;
-
-  beforeAll(async () => {
-    app = await createTestApp((builder) =>
-      builder.overrideProvider(EVENTS_REPOSITORY).useValue({
-        saveMany: () => Promise.reject(new Error('secret detail')),
-      }),
-    );
-  });
-
-  afterAll(async () => {
-    await app.close();
-  });
-
-  it('returns a generic 500 without internals', async () => {
-    const { key } = await setUpIngestion(app);
-
-    const res = await api(app)
+describe('POST /v1/events when Redis is down (e2e)', () => {
+  const send = (app: NestExpressApplication, key: string) =>
+    api(app)
       .post('/v1/events')
       .set('X-Api-Key', key)
       .set('Origin', ORIGIN)
-      .send({ events: [event()] });
+      .send({ events: [event(), event()] });
 
-    expect(res.body).toEqual({
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'Internal server error',
-        requestId: res.headers['x-request-id'],
-      },
-    });
-    expect(res.status).toBe(500);
-    expect(res.text).not.toContain('secret detail');
+  it('accepts the batch and stores it directly in Postgres', async () => {
+    const app = await createTestApp((builder) =>
+      builder
+        .overrideProvider(EventsQueue)
+        .useValue(new EventsQueue(deadRedis())),
+    );
+    try {
+      const { key, projectId } = await seedIngestionKey(app);
+
+      await send(app, key).expect(202);
+
+      expect(await storedEvents(app)).toMatchObject([
+        { projectId },
+        { projectId },
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('returns 503 without internals when the direct insert fails too', async () => {
+    const app = await createTestApp((builder) =>
+      builder
+        .overrideProvider(EventsQueue)
+        .useValue(new EventsQueue(deadRedis()))
+        .overrideProvider(EVENTS_REPOSITORY)
+        .useValue({
+          saveMany: () => Promise.reject(new Error('secret detail')),
+        }),
+    );
+    try {
+      const { key } = await seedIngestionKey(app);
+
+      const res = await send(app, key);
+
+      expect(res.status).toBe(503);
+      expect(res.body).toEqual({
+        error: {
+          code: 'INGESTION_UNAVAILABLE',
+          message: 'Events could not be accepted, retry later',
+          requestId: res.headers['x-request-id'],
+        },
+      });
+      expect(res.text).not.toContain('secret detail');
+    } finally {
+      await app.close();
+    }
   });
 });

@@ -6,6 +6,7 @@ import { RollupsModule } from '../rollups/rollups.module.js';
 
 const ScriptEnvSchema = z.object({
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+  REDIS_URL: z.url({ protocol: /^rediss?$/ }).optional(),
 });
 
 @Module({

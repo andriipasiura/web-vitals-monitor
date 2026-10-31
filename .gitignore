@@ -31,3 +31,5 @@ logs/
 
 # IDE
 .idea/
+# worker dev build
+dist-worker/

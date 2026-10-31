@@ -1,7 +1,6 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER } from '@nestjs/core';
-import { ScheduleModule } from '@nestjs/schedule';
 import { AnalyticsModule } from './analytics/analytics.module.js';
 import { ApiKeysModule } from './api-keys/api-keys.module.js';
 import { AuthModule } from './auth/auth.module.js';
@@ -12,19 +11,19 @@ import { DatabaseModule } from './db/database.module.js';
 import { EventsModule } from './events/events.module.js';
 import { HealthModule } from './health/health.module.js';
 import { ProjectsModule } from './projects/projects.module.js';
-import { RollupsModule } from './rollups/rollups.module.js';
+import { COMMAND_CLIENT_OPTIONS } from './redis/redis.js';
+import { RedisModule } from './redis/redis.module.js';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
-    ScheduleModule.forRoot(),
     DatabaseModule,
+    RedisModule.forRoot(COMMAND_CLIENT_OPTIONS),
     HealthModule,
     AuthModule,
     ProjectsModule,
     ApiKeysModule,
     EventsModule,
-    RollupsModule,
     AnalyticsModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }],

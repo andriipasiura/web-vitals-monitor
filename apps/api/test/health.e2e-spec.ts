@@ -1,7 +1,9 @@
 import { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
 import { DATABASE } from '../src/db/database.js';
+import { REDIS } from '../src/redis/redis.js';
 import { createTestApp } from './create-test-app.js';
+import { deadRedis } from './helpers.js';
 
 describe('Health (e2e)', () => {
   let app: NestExpressApplication;
@@ -53,5 +55,25 @@ describe('Health when the database is down (e2e)', () => {
 
   it('GET /health stays up', () => {
     return request(app.getHttpServer()).get('/health').expect(200);
+  });
+});
+
+describe('Health when Redis is down (e2e)', () => {
+  let app: NestExpressApplication;
+
+  beforeAll(async () => {
+    app = await createTestApp((builder) =>
+      builder.overrideProvider(REDIS).useValue(deadRedis()),
+    );
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('GET /ready returns 503', async () => {
+    const res = await request(app.getHttpServer()).get('/ready').expect(503);
+
+    expect(res.body).toMatchObject({ error: { code: 'NOT_READY' } });
   });
 });

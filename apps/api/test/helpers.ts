@@ -1,9 +1,13 @@
+import type { INestApplicationContext } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { asc } from 'drizzle-orm';
 import request from 'supertest';
 import type { ErrorResponseBody } from '../src/common/errors/all-exceptions.filter.js';
 import { DATABASE, type Database } from '../src/db/database.js';
-import { events } from '../src/db/schema.js';
+import { EventsQueue } from '../src/events/events.queue.js';
+import { generateToken, sha256 } from '../src/common/crypto/tokens.js';
+import { apiKeys, events, projects, users } from '../src/db/schema.js';
+import { COMMAND_CLIENT_OPTIONS, createRedis } from '../src/redis/redis.js';
 
 export const PASSWORD = 'correct-horse';
 
@@ -71,8 +75,57 @@ export async function createApiKey(
   return res.body as { id: string; key: string; prefix: string };
 }
 
-export const database = (app: NestExpressApplication) =>
+export const database = (app: INestApplicationContext) =>
   app.get<Database>(DATABASE);
 
 export const storedEvents = (app: NestExpressApplication) =>
   database(app).select().from(events).orderBy(asc(events.id));
+
+export const deadRedis = () =>
+  createRedis('redis://127.0.0.1:1', COMMAND_CLIENT_OPTIONS, 'dead');
+
+export async function seedIngestionKey(
+  app: NestExpressApplication,
+  allowedOrigins = ['https://shop.example'],
+) {
+  const db = database(app);
+  const [owner] = await db
+    .insert(users)
+    .values({ email: 'seed@example.com', passwordHash: 'unused' })
+    .returning({ id: users.id });
+  const [project] = await db
+    .insert(projects)
+    .values({ ownerId: owner!.id, name: 'Shop', allowedOrigins })
+    .returning({ id: projects.id });
+  const key = generateToken('pk_');
+  await db.insert(apiKeys).values({
+    projectId: project!.id,
+    keyHash: sha256(key),
+    prefix: key.slice(0, 11),
+  });
+  return { projectId: project!.id, key };
+}
+
+export const sleep = (ms: number) =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+export async function drainQueue(
+  app: NestExpressApplication,
+  timeoutMs = 10_000,
+): Promise<void> {
+  const { queue } = app.get(EventsQueue);
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const counts = await queue.getJobCounts(
+      'waiting',
+      'active',
+      'delayed',
+      'prioritized',
+    );
+    if (Object.values(counts).every((count) => count === 0)) return;
+    if (Date.now() > deadline) {
+      throw new Error(`Queue not drained: ${JSON.stringify(counts)}`);
+    }
+    await sleep(20);
+  }
+}

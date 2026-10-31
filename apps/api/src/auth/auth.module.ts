@@ -6,6 +6,7 @@ import {
   createJsonBodyParser,
   DASHBOARD_BODY_LIMIT_BYTES,
 } from '../common/body-parser/json-body-parser.js';
+import { RateLimitModule } from '../rate-limit/rate-limit.module.js';
 import { AuthController } from './auth.controller.js';
 import { ACCESS_TOKEN_TTL_SECONDS, AuthService } from './auth.service.js';
 import { JwtAuthGuard } from './jwt-auth.guard.js';
@@ -17,6 +18,7 @@ const JWT_CLAIMS = {
 
 @Module({
   imports: [
+    RateLimitModule,
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({

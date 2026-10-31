@@ -10,6 +10,7 @@ import {
   type RoutesQuery,
 } from '@rum/shared';
 import { z } from 'zod';
+import { QueryCache } from '../cache/query-cache.js';
 import { ApiException } from '../common/errors/api-exception.js';
 import { DATABASE, type Database } from '../db/database.js';
 import { ProjectsService } from '../projects/projects.service.js';
@@ -88,10 +89,26 @@ export class AnalyticsService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly projects: ProjectsService,
+    private readonly cache: QueryCache,
   ) {}
 
   async metrics(ownerId: string, projectId: string, query: MetricsQuery) {
     await this.projects.get(ownerId, projectId);
+    return this.cache.getOrLoad(
+      this.cache.key('metrics', projectId, query),
+      () => this.loadMetrics(projectId, query),
+    );
+  }
+
+  async routes(ownerId: string, projectId: string, query: RoutesQuery) {
+    await this.projects.get(ownerId, projectId);
+    return this.cache.getOrLoad(
+      this.cache.key('routes', projectId, query),
+      () => this.loadRoutes(projectId, query),
+    );
+  }
+
+  private async loadMetrics(projectId: string, query: MetricsQuery) {
     const fraction = PERCENTILE_FRACTIONS[query.percentile];
     const { rows } = await this.db.execute<SeriesRow>(
       metricsSeriesSql({ projectId, ...query }, query, query.granularity),
@@ -133,8 +150,7 @@ export class AnalyticsService {
     };
   }
 
-  async routes(ownerId: string, projectId: string, query: RoutesQuery) {
-    await this.projects.get(ownerId, projectId);
+  private async loadRoutes(projectId: string, query: RoutesQuery) {
     const fraction = PERCENTILE_FRACTIONS[query.percentile];
     const { rows } = await this.db.execute<RouteRow>(
       routesSummarySql({ projectId, ...query }, query),

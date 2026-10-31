@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import type { Request } from 'express';
 import { REQUEST_ID_HEADER } from './common/request-id/request-id.middleware.js';
+import type { Env } from './config/env.js';
 
 export const appOptions = {
   bodyParser: false,
@@ -15,12 +16,22 @@ const ingestionCors: CorsOptions = {
   origin: '*',
   methods: ['POST'],
   allowedHeaders: ['Content-Type', 'X-Api-Key'],
+  exposedHeaders: [
+    'Retry-After',
+    'RateLimit-Limit',
+    'RateLimit-Remaining',
+    'RateLimit-Reset',
+  ],
   maxAge: 86_400,
 };
 
 export function configureApp(app: NestExpressApplication): void {
+  const config = app.get(ConfigService);
+  const trustProxy = config.get<Env['TRUST_PROXY']>('TRUST_PROXY');
+  if (trustProxy !== undefined) app.set('trust proxy', trustProxy);
+
   const dashboardCors: CorsOptions = {
-    origin: app.get(ConfigService).getOrThrow<string>('DASHBOARD_ORIGIN'),
+    origin: config.getOrThrow<string>('DASHBOARD_ORIGIN'),
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
