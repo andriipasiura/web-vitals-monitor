@@ -15,7 +15,12 @@ import {
   type RegisterInput,
 } from '@rum/shared';
 import type { CookieOptions, Request, Response } from 'express';
+import { sha256 } from '../common/crypto/tokens.js';
 import { ZodValidationPipe } from '../common/validation/zod-validation.pipe.js';
+import {
+  RATE_LIMITS,
+  RateLimitService,
+} from '../rate-limit/rate-limit.service.js';
 import { CurrentUser, Public, type AuthUser } from './auth.decorators.js';
 import {
   AuthService,
@@ -31,6 +36,7 @@ export class AuthController {
 
   constructor(
     private readonly authService: AuthService,
+    private readonly rateLimits: RateLimitService,
     config: ConfigService,
   ) {
     this.cookieOptions = {
@@ -52,8 +58,14 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async login(
     @Body(new ZodValidationPipe(LoginSchema)) input: LoginInput,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
+    await this.rateLimits.enforce(
+      RATE_LIMITS.login,
+      `${req.ip ?? 'unknown'}:${sha256(input.email)}`,
+      res,
+    );
     return this.setSession(res, await this.authService.login(input));
   }
 

@@ -6,7 +6,7 @@ import globals from 'globals';
 import prettier from 'eslint-config-prettier';
 
 export default defineConfig(
-  { ignores: ['dist', 'coverage', 'eslint.config.mjs'] },
+  { ignores: ['dist', 'dist-worker', 'coverage', 'eslint.config.mjs'] },
 
   js.configs.recommended,
   tseslint.configs.recommendedTypeChecked,

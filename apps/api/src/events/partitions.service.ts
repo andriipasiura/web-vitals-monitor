@@ -1,10 +1,4 @@
-import {
-  Inject,
-  Injectable,
-  Logger,
-  type OnApplicationBootstrap,
-} from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import {
   ADVISORY_LOCKS,
@@ -47,23 +41,10 @@ export async function createPartition(
 }
 
 @Injectable()
-export class PartitionsService implements OnApplicationBootstrap {
+export class PartitionsService {
   private readonly logger = new Logger(PartitionsService.name);
 
   constructor(@Inject(DATABASE) private readonly db: Database) {}
-
-  onApplicationBootstrap(): Promise<void> {
-    return this.runScheduled();
-  }
-
-  @Cron(CronExpression.EVERY_HOUR)
-  async runScheduled(): Promise<void> {
-    try {
-      await this.maintain();
-    } catch (err) {
-      this.logger.error(`Partition maintenance failed: ${String(err)}`);
-    }
-  }
 
   async maintain(now = new Date()): Promise<LockResult<PartitionChanges>> {
     const outcome = await withAdvisoryXactLock(

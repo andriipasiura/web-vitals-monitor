@@ -16,8 +16,9 @@ import { ADVISORY_LOCKS } from '../src/db/advisory-lock.js';
 import { eventRollupsHourly, events } from '../src/db/schema.js';
 import { startOfUtcDay } from '../src/events/partitions.service.js';
 import { RollupsService } from '../src/rollups/rollups.service.js';
-import { createTestApp } from './create-test-app.js';
-import { createProject, database, signUp } from './helpers.js';
+import { TestingModule } from '@nestjs/testing';
+import { createTestApp, createTestWorker } from './create-test-app.js';
+import { api, createProject, database, signUp } from './helpers.js';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -73,9 +74,12 @@ describe('Hourly rollups (e2e)', () => {
         asc(eventRollupsHourly.release),
       );
 
+  let worker: TestingModule;
+
   beforeAll(async () => {
     app = await createTestApp();
-    rollups = app.get(RollupsService);
+    worker = await createTestWorker();
+    rollups = worker.get(RollupsService);
   });
 
   beforeEach(async () => {
@@ -84,7 +88,7 @@ describe('Hourly rollups (e2e)', () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    await Promise.all([app.close(), worker.close()]);
   });
 
   it('stores exact counts, ratings, sums and buckets', async () => {
@@ -116,6 +120,33 @@ describe('Hourly rollups (e2e)', () => {
       bucketIndex('LCP', METRIC_THRESHOLDS.LCP.good),
     );
     expect(goodBuckets.reduce((sum, count) => sum + count, 0)).toBe(3);
+  });
+
+  it('skips events of deleted projects instead of failing the whole run', async () => {
+    await insert([{ value: 1000 }]);
+    const { accessToken } = await signUp(app, 'gone@example.com');
+    const gone = await createProject(app, accessToken);
+    await database(app)
+      .insert(events)
+      .values({
+        projectId: gone.id,
+        metric: 'LCP',
+        value: 1000,
+        rating: 'good',
+        path: '/a',
+        route: '/a',
+        routeSource: 'server',
+        deviceType: 'mobile',
+        clientEventId: randomUUID(),
+        receivedAt: at(0),
+      });
+    await api(app)
+      .delete(`/v1/projects/${gone.id}`)
+      .auth(accessToken, { type: 'bearer' })
+      .expect(204);
+
+    expect(await rollups.recompute(at(0), at(1))).toBe(1);
+    expect(await stored()).toMatchObject([{ projectId }]);
   });
 
   it('puts values on every edge in the same bucket as bucketIndex', async () => {

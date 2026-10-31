@@ -61,7 +61,11 @@ export class ApiKeysService {
 
   async findProject(key: string) {
     const [project] = await this.db
-      .select({ id: projects.id, allowedOrigins: projects.allowedOrigins })
+      .select({
+        id: projects.id,
+        apiKeyId: apiKeys.id,
+        allowedOrigins: projects.allowedOrigins,
+      })
       .from(apiKeys)
       .innerJoin(projects, eq(projects.id, apiKeys.projectId))
       .where(and(eq(apiKeys.keyHash, sha256(key)), isNull(apiKeys.revokedAt)));

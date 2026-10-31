@@ -1,4 +1,5 @@
-import { NestExpressApplication } from '@nestjs/platform-express';
+import { TestingModule } from '@nestjs/testing';
+import { Queue } from 'bullmq';
 import { sql } from 'drizzle-orm';
 import { Pool } from 'pg';
 import { inject } from 'vitest';
@@ -9,13 +10,18 @@ import {
   PartitionsService,
   startOfUtcDay,
 } from '../src/events/partitions.service.js';
-import { createTestApp } from './create-test-app.js';
-import { database } from './helpers.js';
+import {
+  MAINTENANCE_QUEUE_NAME,
+  MAINTENANCE_SCHEDULES,
+} from '../src/worker/maintenance.processor.js';
+import { WorkersService } from '../src/worker/workers.service.js';
+import { createTestWorker } from './create-test-app.js';
+import { database, sleep } from './helpers.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 describe('Partition maintenance (e2e)', () => {
-  let app: NestExpressApplication;
+  let app: TestingModule;
   let service: PartitionsService;
   const today = startOfUtcDay(new Date());
   const day = (offset: number) => new Date(today.getTime() + offset * DAY_MS);
@@ -37,7 +43,7 @@ describe('Partition maintenance (e2e)', () => {
   }
 
   beforeAll(async () => {
-    app = await createTestApp();
+    app = await createTestWorker();
     service = app.get(PartitionsService);
   });
 
@@ -51,8 +57,33 @@ describe('Partition maintenance (e2e)', () => {
     await app.close();
   });
 
-  it('creates partitions for today and 7 days ahead on startup', async () => {
-    const names = await partitions();
+  it('schedules maintenance and creates partitions for today and 7 days ahead when the worker starts', async () => {
+    await dropIfExists(7);
+
+    await app.get(WorkersService).scheduleMaintenance();
+
+    const queue = new Queue(MAINTENANCE_QUEUE_NAME, {
+      connection: { url: process.env.REDIS_URL },
+    });
+    try {
+      const schedulers = await queue.getJobSchedulers();
+      expect(
+        schedulers
+          .map(({ key, every }) => ({ key, every }))
+          .sort((a, b) => a.key.localeCompare(b.key)),
+      ).toEqual([
+        { key: 'partitions', every: MAINTENANCE_SCHEDULES.partitions },
+        { key: 'rollups', every: MAINTENANCE_SCHEDULES.rollups },
+      ]);
+    } finally {
+      await queue.close();
+    }
+
+    let names = await partitions();
+    for (let i = 0; i < 100 && !names.includes(partitionName(day(7))); i++) {
+      await sleep(50);
+      names = await partitions();
+    }
     for (let offset = 0; offset <= 7; offset++) {
       expect(names).toContain(partitionName(day(offset)));
     }

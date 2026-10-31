@@ -153,7 +153,7 @@ describe('Analytics (e2e)', () => {
         ...[1000, 2000, 3000, 4000].map((value) => ({ value })),
         { value: 500, route: '/b', deviceType: 'desktop', receivedAt: at(1) },
       ]);
-      await app.get(RollupsService).recompute(hour, at(2));
+      await new RollupsService(database(app)).recompute(hour, at(2));
     });
 
     it('returns an hourly percentile series with rating shares', async () => {
@@ -246,7 +246,7 @@ describe('Analytics (e2e)', () => {
         { value: 500, route: '/fast' },
         ...[3000, 5000].map((value) => ({ value, route: '/slow' })),
       ]);
-      await app.get(RollupsService).recompute(hour, at(1));
+      await new RollupsService(database(app)).recompute(hour, at(1));
 
       const res = await get('/routes', { metric: 'LCP', ...period }).expect(
         200,

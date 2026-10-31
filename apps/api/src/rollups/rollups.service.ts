@@ -46,6 +46,7 @@ export function rollupUpsertSql(from: Date, to: Date): SQL {
           sum(e.value) as sum_value
         from events e
         join ${bucketEdgesValues()} on edges.metric = e.metric
+        join projects p on p.id = e.project_id
         where e.received_at >= ${start.toISOString()}::timestamptz
           and e.received_at < ${end.toISOString()}::timestamptz
         group by 1, 2, 3, 4, 5, 6, 7
