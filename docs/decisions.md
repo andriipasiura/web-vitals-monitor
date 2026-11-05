@@ -31,6 +31,16 @@ Phase 4: queue, worker, rate limits, deduplication and cache.
 - **Cache:** `GET /metrics` and `/routes` are cache-aside, keyed by project and a hash of the parsed query, for 60 s ± 10 %. They are never invalidated, because rollups only refresh every 5 minutes. The ownership check runs before the cache. On a miss, one request takes a 5 s lock and fills the cache, and the others poll for up to 1 s before querying Postgres themselves. If Redis is down, the cache is skipped.
 - **Maintenance:** rollups (every 5 min) and partition maintenance (hourly, plus once when the worker starts) are BullMQ job schedulers on a separate `maintenance` queue with concurrency 1. The rollup skips events of deleted projects; before this, a single deleted project failed the whole upsert on the rollups foreign key.
 
+Phase 5: collector SDK.
+
+- **`@rum/sdk`** (`packages/rum-sdk`) has one source and two tsup builds: ESM (`dist/index.js`, `initRum`) with web-vitals external, and a minified IIFE (`dist/rum.js`) that reads `data-key`, `data-endpoint`, `data-release` and `data-sample-rate` from its own script tag. `endpoint` is the API base URL; events go to `${endpoint}/v1/events?key=...`.
+- **web-vitals 6, attribution build.** Each event carries an attribution summary per metric: selectors (`target`, `interactionTarget`, `largestShiftTarget`), the LCP resource URL without query or fragment, and phase durations. Raw entries, load state and interaction type are not sent.
+- **Size budget is 7 KB gzipped**, checked by `pnpm size` (part of `pnpm check`). The attribution build alone is about 5.9 KB, so 6 KB was not reachable without dropping attribution.
+- **Constants without zod.** `EVENT_LIMITS`, the enum value lists and the path pattern live in `@rum/shared/limits`, so the SDK can bundle them without pulling in zod. Payload types come from the schemas through `import type` and `satisfies`, so a schema change breaks the SDK build.
+- **Every field is cleaned on the client** because the api rejects a whole batch for one bad event: path, route, release and attribution values are truncated to the shared limits, the route loses its query string and is dropped unless it starts with `/` and has no whitespace, and an empty release is omitted. Path, route, device type and connection type are captured once at init, because web-vitals reports per page load.
+- **Sending:** batches of up to 10 events. A full batch is sent at once; the rest is flushed on `visibilitychange` to hidden (listened on `document`, which runs after web-vitals' capture listener on `window` has reported) and on `pagehide`. The body goes through `sendBeacon` as `text/plain` with the key in `?key=`, so no preflight is needed; if `sendBeacon` refuses or throws, the same request goes through `fetch` with `keepalive`. A failed batch is dropped, with no retries.
+- **Sampling** is decided once per page load (`Math.random() < sampleRate`, default 1). A second `initRum` call does nothing. Without `crypto.randomUUID` (non-secure context) the SDK does not start.
+
 ## Known limitations
 
 - **Origin can be forged outside browsers.** The allowlist only stops other websites from reusing a key copied from a page. A script can send any `Origin`, so with a public key anyone can submit events.
@@ -46,3 +56,5 @@ Phase 4: queue, worker, rate limits, deduplication and cache.
 - A deleted project's raw events stay until their partition is dropped (at most 30 days); every query is scoped to an owned project, so they are unreachable.
 - Rollups are never pruned yet.
 - If the worker does not run for 7 days, no partitions are created and ingestion starts failing.
+- The SDK drops a batch when sending fails, and `sendBeacon` reports only that the browser queued it, so lost events are not noticed.
+- The SDK reports hard page loads only; soft navigations in single-page apps are not tracked.

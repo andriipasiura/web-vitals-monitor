@@ -1,27 +1,20 @@
 import { z } from 'zod';
+import {
+  CONNECTION_TYPES,
+  DEVICE_TYPES,
+  EVENT_LIMITS,
+  MAX_BATCH_BODY_BYTES,
+  PATH_PATTERN,
+} from './limits.js';
 import { MetricNameSchema } from './metrics.js';
 
-export const EVENT_LIMITS = {
-  maxEventsPerBatch: 10,
-  maxPathLength: 512,
-  maxRouteLength: 512,
-  maxReleaseLength: 64,
-  maxAttributionKeys: 16,
-  maxAttributionKeyLength: 64,
-  maxAttributionValueLength: 128,
-} as const;
+export { CONNECTION_TYPES, DEVICE_TYPES, EVENT_LIMITS, MAX_BATCH_BODY_BYTES };
 
-export const MAX_BATCH_BODY_BYTES = 32 * 1024;
-
-export const DEVICE_TYPES = ['mobile', 'tablet', 'desktop'] as const;
 export const DeviceTypeSchema = z.enum(DEVICE_TYPES);
 export type DeviceType = z.infer<typeof DeviceTypeSchema>;
 
-export const CONNECTION_TYPES = ['slow-2g', '2g', '3g', '4g'] as const;
 export const ConnectionTypeSchema = z.enum(CONNECTION_TYPES);
 export type ConnectionType = z.infer<typeof ConnectionTypeSchema>;
-
-const PATH_PATTERN = /^\/[^?#\s]*$/;
 
 const pathLike = (maxLength: number) =>
   z.string().max(maxLength).regex(PATH_PATTERN, {
