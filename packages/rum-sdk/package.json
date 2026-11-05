@@ -1,0 +1,35 @@
+{
+  "name": "@rum/sdk",
+  "private": true,
+  "type": "module",
+  "sideEffects": [
+    "./dist/rum.js"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./rum.js": "./dist/rum.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "size": "tsup && node scripts/check-size.mjs"
+  },
+  "dependencies": {
+    "web-vitals": "^6.2.3"
+  },
+  "devDependencies": {
+    "@rum/shared": "workspace:*",
+    "happy-dom": "^21.0.4",
+    "tsup": "^9.0.0",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

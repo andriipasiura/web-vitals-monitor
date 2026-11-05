@@ -1,6 +1,8 @@
 import { z } from 'zod';
+import { METRIC_NAMES } from './limits.js';
 
-export const METRIC_NAMES = ['LCP', 'INP', 'CLS', 'TTFB', 'FCP'] as const;
+export { METRIC_NAMES };
+
 export const MetricNameSchema = z.enum(METRIC_NAMES);
 export type MetricName = z.infer<typeof MetricNameSchema>;
 

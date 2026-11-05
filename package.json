@@ -16,8 +16,9 @@
     "test": "pnpm build:shared && pnpm -r --if-present --no-bail test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
-    "prepare": "husky"
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm size",
+    "prepare": "husky",
+    "size": "pnpm build:shared && pnpm --filter @rum/sdk size"
   },
   "devDependencies": {
     "husky": "^9.1.7",
