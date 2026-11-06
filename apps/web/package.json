@@ -7,15 +7,25 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "sdk": "pnpm --filter @rum/sdk build && node -e \"require('node:fs').copyFileSync(require.resolve('@rum/sdk/rum.js'), 'public/rum.js')\"",
+    "predev": "pnpm sdk",
+    "prebuild": "pnpm sdk"
   },
   "dependencies": {
     "@rum/shared": "workspace:*",
-    "next": "16.4.3",
+    "@tanstack/react-query": "^5.106.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "next": "16.5.0-canary.39",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "tailwind-merge": "^3.7.0",
+    "uplot": "^1.6.32"
   },
   "devDependencies": {
+    "@rum/sdk": "workspace:*",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "catalog:",
     "@types/react": "^19",
@@ -23,6 +33,7 @@
     "eslint": "catalog:",
     "eslint-config-next": "16.4.3",
     "tailwindcss": "^4",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }
