@@ -41,6 +41,14 @@ Phase 5: collector SDK.
 - **Sending:** batches of up to 10 events. A full batch is sent at once; the rest is flushed on `visibilitychange` to hidden (listened on `document`, which runs after web-vitals' capture listener on `window` has reported) and on `pagehide`. The body goes through `sendBeacon` as `text/plain` with the key in `?key=`, so no preflight is needed; if `sendBeacon` refuses or throws, the same request goes through `fetch` with `keepalive`. A failed batch is dropped, with no retries.
 - **Sampling** is decided once per page load (`Math.random() < sampleRate`, default 1). A second `initRum` call does nothing. Without `crypto.randomUUID` (non-secure context) the SDK does not start.
 
+Phase 6: dashboard.
+
+- **Client-side data.** The dashboard calls the api directly with `credentials: 'include'`. The access token lives in memory only (`apps/web/lib/api.ts`). On load and on a 401 the client calls `/v1/auth/refresh` and retries once. The refresh is single-flight: concurrent 401s and React StrictMode's double effect share one request, because two refreshes with the same cookie count as reuse and revoke the session. A 401 retry skips the refresh when another request already renewed the token.
+- **Rendering.** Server Components render layouts and the static shell; pages under the session gate are client components with TanStack Query. Nothing that reads the URL renders before the session resolves, so no extra Suspense boundaries are needed under Cache Components.
+- **Filters live in the URL** (`metric`, `period`, `percentile`, `route`, `device`, `release`). `to` is rounded up to the next hour so `/metrics` and `/routes` hit the api cache. Periods over 7 days use day granularity. The route page takes the route template as `?route=`, not as a path segment.
+- **Snippet hosting.** The dashboard serves the IIFE build at `/rum.js`; `predev`/`prebuild` build `@rum/sdk` and copy it to `apps/web/public` (ignored by git). `NEXT_PUBLIC_API_URL` sets the api base URL, baked in at build time.
+- **Charts:** one uPlot component, loaded with `next/dynamic` and `ssr: false`. The x-axis spans the selected period, and the good and poor thresholds are drawn as labelled lines. Good, needs improvement and poor use one set of color tokens (`--color-good`, `--color-ni`, `--color-poor`), always shown with a text label because red and amber are hard to tell apart with deuteranopia.
+
 ## Known limitations
 
 - **Origin can be forged outside browsers.** The allowlist only stops other websites from reusing a key copied from a page. A script can send any `Origin`, so with a public key anyone can submit events.
@@ -58,3 +66,5 @@ Phase 5: collector SDK.
 - If the worker does not run for 7 days, no partitions are created and ingestion starts failing.
 - The SDK drops a batch when sending fails, and `sendBeacon` reports only that the browser queued it, so lost events are not noticed.
 - The SDK reports hard page loads only; soft navigations in single-page apps are not tracked.
+- The dashboard and the api must be on the same site (for example `app.example.com` and `api.example.com`), because the refresh cookie is `SameSite=Lax`.
+- Release is a free-text filter: there is no endpoint that lists releases.

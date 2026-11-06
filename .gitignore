@@ -33,3 +33,5 @@ logs/
 .idea/
 # worker dev build
 dist-worker/
+
+apps/web/public/rum.js
