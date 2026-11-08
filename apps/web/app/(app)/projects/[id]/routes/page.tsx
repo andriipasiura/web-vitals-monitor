@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { FilterBar } from '@/components/filter-bar';
 import { MetricValue, ShareBar } from '@/components/rating';
-import { Panel, QueryState } from '@/components/states';
+import { PageHeader, Panel, QueryState } from '@/components/states';
 import {
   Table,
   TableBody,
@@ -27,8 +27,10 @@ export default function RoutesPage() {
     `/projects/${id}/route?${toQuery({ ...filters, route })}`;
 
   return (
-    <div className="space-y-6">
-      <FilterBar />
+    <div className="space-y-4">
+      <PageHeader title="Routes">
+        <FilterBar />
+      </PageHeader>
       <Panel
         title={`Routes by ${filters.metric} ${filters.percentile}`}
         className={cn(routes.isPlaceholderData && 'opacity-60')}
@@ -55,7 +57,7 @@ export default function RoutesPage() {
                 {data.routes.map((row) => (
                   <TableRow
                     key={row.route}
-                    className="cursor-pointer hover:bg-zinc-50"
+                    className="cursor-pointer hover:bg-subtle"
                     onClick={() => router.push(href(row.route))}
                   >
                     <TableCell className="max-w-96 truncate font-mono text-xs">
@@ -64,15 +66,19 @@ export default function RoutesPage() {
                       </Link>
                     </TableCell>
                     <TableCell className="text-right font-medium">
-                      <MetricValue metric={filters.metric} value={row.value} />
+                      <MetricValue
+                        metric={filters.metric}
+                        value={row.value}
+                        dot
+                      />
                     </TableCell>
                     <TableCell>
                       <ShareBar shares={row.shares} />
                     </TableCell>
-                    <TableCell className="text-right text-zinc-600">
+                    <TableCell className="text-right text-muted">
                       {row.shares ? formatPercent(row.shares.good) : '—'}
                     </TableCell>
-                    <TableCell className="text-right text-zinc-600">
+                    <TableCell className="text-right text-muted">
                       {formatCount(row.count)}
                     </TableCell>
                   </TableRow>

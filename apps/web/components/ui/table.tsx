@@ -37,7 +37,7 @@ export function TableRow({ className, ...props }: ComponentProps<'tr'>) {
   return (
     <tr
       data-slot="table-row"
-      className={cn('border-b border-zinc-100 transition-colors', className)}
+      className={cn('border-b border-line transition-colors', className)}
       {...props}
     />
   );
@@ -48,7 +48,7 @@ export function TableHead({ className, ...props }: ComponentProps<'th'>) {
     <th
       data-slot="table-head"
       className={cn(
-        'h-9 px-3 text-left align-middle text-xs font-medium whitespace-nowrap text-zinc-500',
+        'h-9 px-3 text-left align-middle text-xs font-medium whitespace-nowrap text-muted',
         className,
       )}
       {...props}

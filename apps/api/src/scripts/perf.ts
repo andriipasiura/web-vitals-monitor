@@ -22,6 +22,7 @@ import {
   rollupUpsertSql,
   startOfUtcHour,
 } from '../rollups/rollups.service.js';
+import { DEMO_EMAIL, DEMO_PROJECTS } from './demo.js';
 import { ScriptsModule } from './scripts.module.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -223,12 +224,12 @@ async function main(): Promise<void> {
     const [owner] = await db
       .select({ id: users.id })
       .from(users)
-      .where(eq(users.email, 'seed@example.com'));
+      .where(eq(users.email, DEMO_EMAIL));
     if (!owner) throw new Error('Run the seed script first');
     const [project] = await db
       .select({ id: projects.id })
       .from(projects)
-      .where(eq(projects.name, 'Shop (60%)'));
+      .where(eq(projects.name, DEMO_PROJECTS[0]));
     const projectId = project!.id;
 
     const now = new Date();

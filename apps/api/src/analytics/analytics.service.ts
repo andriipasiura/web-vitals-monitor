@@ -2,11 +2,13 @@ import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import {
   ANALYTICS_LIMITS,
   type AttributionQuery,
+  METRIC_NAMES,
   type MetricName,
   type MetricsQuery,
   type PathsQuery,
   PERCENTILE_FRACTIONS,
   percentileFromHistogram,
+  type ReleasesQuery,
   type RoutesQuery,
 } from '@rum/shared';
 import { z } from 'zod';
@@ -15,10 +17,14 @@ import { ApiException } from '../common/errors/api-exception.js';
 import { DATABASE, type Database } from '../db/database.js';
 import { ProjectsService } from '../projects/projects.service.js';
 import {
+  type FirstSeenRow,
   lcpElementsSql,
   metricsSeriesSql,
   type PathRow,
   type PathsCursor,
+  releaseRoutesSql,
+  type ReleaseRouteRow,
+  releasesFirstSeenSql,
   routesSummarySql,
   type RouteRow,
   type SeriesRow,
@@ -27,6 +33,7 @@ import {
   type TargetRow,
   type TotalsRow,
 } from './analytics.queries.js';
+import { summarizeReleases } from './releases.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -108,6 +115,14 @@ export class AnalyticsService {
     );
   }
 
+  async releases(ownerId: string, projectId: string, query: ReleasesQuery) {
+    await this.projects.get(ownerId, projectId);
+    return this.cache.getOrLoad(
+      this.cache.key('releases', projectId, query),
+      () => this.loadReleases(projectId, query),
+    );
+  }
+
   private async loadMetrics(projectId: string, query: MetricsQuery) {
     const fraction = PERCENTILE_FRACTIONS[query.percentile];
     const { rows } = await this.db.execute<SeriesRow>(
@@ -152,26 +167,69 @@ export class AnalyticsService {
 
   private async loadRoutes(projectId: string, query: RoutesQuery) {
     const fraction = PERCENTILE_FRACTIONS[query.percentile];
-    const { rows } = await this.db.execute<RouteRow>(
-      routesSummarySql({ projectId, ...query }, query),
-    );
+    const filters = { projectId, ...query };
+    const span = query.to.getTime() - query.from.getTime();
+    const previousPeriod = {
+      from: new Date(query.from.getTime() - span),
+      to: query.from,
+    };
+    const [current, previous] = await Promise.all([
+      this.db.execute<RouteRow>(routesSummarySql(filters, query)),
+      this.db.execute<RouteRow>(routesSummarySql(filters, previousPeriod)),
+    ]);
+    const value = (row: RouteRow) =>
+      percentileFromHistogram(query.metric, row.buckets.map(Number), fraction);
+    const before = new Map(previous.rows.map((row) => [row.route, row]));
 
-    const routes = rows
-      .map((row) => ({
-        route: row.route,
-        value: percentileFromHistogram(
-          query.metric,
-          row.buckets.map(Number),
-          fraction,
-        ),
-        ...summarize(row),
-      }))
+    const routes = current.rows
+      .filter((row) => Number(row.count) >= (query.minSamples ?? 0))
+      .map((row) => {
+        const old = before.get(row.route);
+        return {
+          route: row.route,
+          value: value(row),
+          ...summarize(row),
+          previousValue: old ? value(old) : null,
+          previousCount: old ? Number(old.count) : 0,
+        };
+      })
       .sort(
         (a, b) =>
           (b.value ?? -1) - (a.value ?? -1) || a.route.localeCompare(b.route),
       )
       .slice(0, query.limit);
     return { metric: query.metric, percentile: query.percentile, routes };
+  }
+
+  private async loadReleases(projectId: string, query: ReleasesQuery) {
+    const results = await Promise.all(
+      METRIC_NAMES.map((metric) =>
+        this.db.execute<ReleaseRouteRow>(
+          releaseRoutesSql(
+            { projectId, metric, deviceType: query.deviceType },
+            query,
+          ),
+        ),
+      ),
+    );
+    const rows = Object.fromEntries(
+      METRIC_NAMES.map((metric, i) => [metric, results[i]!.rows]),
+    ) as Record<MetricName, ReleaseRouteRow[]>;
+    const names = [
+      ...new Set(results.flatMap(({ rows }) => rows.map((r) => r.release))),
+    ];
+    const firstSeen = new Map<string, Date>();
+    if (names.length > 0) {
+      const { rows: seen } = await this.db.execute<FirstSeenRow>(
+        releasesFirstSeenSql(projectId, names, query.to),
+      );
+      for (const row of seen)
+        firstSeen.set(row.release, new Date(row.first_seen));
+    }
+    return {
+      percentile: query.percentile,
+      ...summarizeReleases(rows, firstSeen, query.percentile),
+    };
   }
 
   async paths(

@@ -166,3 +166,41 @@ export function slowestInpTargetsSql(
     limit ${ANALYTICS_LIMITS.maxAttributionTargets}
   `;
 }
+
+export type ReleaseRouteRow = {
+  release: string;
+  route: string;
+  count: string;
+  buckets: string[];
+};
+
+export type FirstSeenRow = { release: string; first_seen: string };
+
+export function releaseRoutesSql(filters: Filters, period: Period): SQL {
+  return sql`
+    select r.release, r.route, sum(r.count)::int8 as count,
+      ${bucketSums(filters.metric)} as buckets
+    from event_rollups_hourly r
+    where ${filterConditions('r', filters)} and r.release is not null
+      and ${rollupPeriod(period)}
+    group by r.release, r.route
+  `;
+}
+
+export function releasesFirstSeenSql(
+  projectId: string,
+  releases: readonly string[],
+  before: Date,
+): SQL {
+  return sql`
+    select r.release, min(r.hour) as first_seen
+    from event_rollups_hourly r
+    where r.project_id = ${projectId}
+      and r.release in (${sql.join(
+        releases.map((release) => sql`${release}`),
+        sql`, `,
+      )})
+      and r.hour < ${before.toISOString()}::timestamptz
+    group by r.release
+  `;
+}

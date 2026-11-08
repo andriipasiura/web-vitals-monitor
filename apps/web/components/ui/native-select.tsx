@@ -20,7 +20,7 @@ export function NativeSelect({
       <svg
         aria-hidden
         viewBox="0 0 16 16"
-        className="pointer-events-none absolute top-1/2 right-2 size-3 -translate-y-1/2 text-zinc-400"
+        className="pointer-events-none absolute top-1/2 right-2 size-3 -translate-y-1/2 text-faint"
       >
         <path
           d="M4 6l4 4 4-4"

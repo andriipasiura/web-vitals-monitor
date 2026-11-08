@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Post,
@@ -85,6 +86,11 @@ export class AuthController {
       res.clearCookie(COOKIE, this.cookieOptions);
       throw err;
     }
+  }
+
+  @Get('me')
+  me(@CurrentUser() user: AuthUser) {
+    return this.authService.me(user.id);
   }
 
   @Post('logout')

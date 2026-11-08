@@ -54,6 +54,21 @@ describe('Auth: register and login (e2e)', () => {
     expect(payload.sub).toBe(userId);
   });
 
+  it('returns the current user from GET /me', async () => {
+    const { accessToken } = await signUp(app);
+
+    const res = await api(app)
+      .get('/v1/auth/me')
+      .auth(accessToken, { type: 'bearer' })
+      .expect(200);
+
+    expect(res.body).toEqual({
+      id: expect.any(String),
+      email: 'dev@example.com',
+    });
+    await api(app).get('/v1/auth/me').expect(401);
+  });
+
   it('returns the same 401 for a wrong password and an unknown email', async () => {
     await signUp(app);
     const wrongPassword = await login('dev@example.com', 'wrong-pass').expect(

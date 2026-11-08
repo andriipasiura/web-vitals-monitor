@@ -53,6 +53,21 @@ export class AuthService {
     return user;
   }
 
+  async me(userId: string) {
+    const [user] = await this.db
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(eq(users.id, userId));
+    if (!user) {
+      throw new ApiException(
+        HttpStatus.UNAUTHORIZED,
+        'UNAUTHORIZED',
+        'User no longer exists',
+      );
+    }
+    return user;
+  }
+
   async login({ email, password }: LoginInput): Promise<Session> {
     const [user] = await this.db
       .select()

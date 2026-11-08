@@ -1,3 +1,4 @@
+import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { hash } from '@node-rs/argon2';
 import { METRIC_NAMES, METRIC_THRESHOLDS } from '@rum/shared';
@@ -7,13 +8,13 @@ import { DATABASE, type Database } from '../db/database.js';
 import { projects, users } from '../db/schema.js';
 import { createPartition } from '../events/partitions.service.js';
 import { RollupsService } from '../rollups/rollups.service.js';
+import { DEMO_EMAIL, DEMO_ORIGIN, DEMO_PROJECTS } from './demo.js';
 import { ScriptsModule } from './scripts.module.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const SEED_EMAIL = 'seed@example.com';
-const SEED_PASSWORD = 'seed-password';
 
 const SECTIONS = [
+  'checkout',
   'products',
   'categories',
   'blog',
@@ -21,7 +22,6 @@ const SECTIONS = [
   'account',
   'orders',
   'cart',
-  'checkout',
   'search',
   'help',
   'careers',
@@ -65,13 +65,16 @@ const ROUTES = SECTIONS.flatMap((section) => [
 ]);
 
 const RELEASES = [
-  '2026.9.1',
-  '2026.9.2',
-  '2026.10.1',
-  '2026.10.2',
-  '2026.10.3',
-];
-const REGRESSED_RELEASE = RELEASES[2]!;
+  { name: '2026.9.1', daysBeforeEnd: null },
+  { name: '2026.9.2', daysBeforeEnd: 22 },
+  { name: '2026.10.1', daysBeforeEnd: 14 },
+  { name: '2026.10.2', daysBeforeEnd: 6 },
+  { name: '2026.10.3', daysBeforeEnd: 2.5 },
+] as const;
+const RELEASE_NAMES = RELEASES.map((release) => release.name);
+const REGRESSED_RELEASE = RELEASE_NAMES.at(-1)!;
+const REGRESSED_ROUTE = '/checkout';
+const REGRESSION_FACTOR = 1.3;
 
 const LCP_TARGETS = [
   'img.hero',
@@ -118,7 +121,7 @@ function argument(name: string): string | undefined {
 async function insertChunk(
   db: Database,
   projectIds: string[],
-  seedStart: Date,
+  releaseStarts: readonly Date[],
   from: Date,
   to: Date,
   count: number,
@@ -147,9 +150,11 @@ async function insertChunk(
         case when rm < 0.22 then 'LCP' when rm < 0.44 then 'FCP'
           when rm < 0.66 then 'TTFB' when rm < 0.88 then 'CLS' else 'INP' end as metric,
         case when rrel < 0.1 then null else
-          (${pgArray(RELEASES)}::text[])[greatest(1, least(${RELEASES.length},
-            floor(extract(epoch from received_at - ${seedStart.toISOString()}::timestamptz)
-              / ${(6 * DAY_MS) / 1000})::int + 1 - (rrel < 0.3)::int))]
+          (${pgArray(RELEASE_NAMES)}::text[])[greatest(1,
+            (select count(*)::int
+              from unnest(${pgArray(releaseStarts.map((d) => d.toISOString()))}::timestamptz[]) s
+              where s <= received_at)
+            - (rrel < 0.3)::int)]
         end as release
       from raw
     ),
@@ -162,7 +167,8 @@ async function insertChunk(
           else round(
             (case metric when 'LCP' then 1800 when 'FCP' then 1200 when 'TTFB' then 450 else 110 end)
             * case device_type when 'mobile' then 1.5 when 'tablet' then 1.2 else 1 end
-            * case when metric = 'LCP' and release = ${REGRESSED_RELEASE} then 1.4 else 1 end
+            * case when metric = 'LCP' and route = ${REGRESSED_ROUTE}
+                and release = ${REGRESSED_RELEASE} then ${REGRESSION_FACTOR}::float8 else 1 end
             * case when rz > 0.98 then 4 else 1 end
             * exp((case metric when 'LCP' then 0.55 when 'FCP' then 0.5 when 'TTFB' then 0.7 else 0.8 end) * z)
           )::float8
@@ -209,30 +215,36 @@ async function main(): Promise<void> {
       console.log(`[${new Date().toISOString()}] ${message}`);
 
     await db.execute(sql`truncate events, event_rollups_hourly`);
-    await db.delete(users).where(eq(users.email, SEED_EMAIL));
+    const password = app
+      .get(ConfigService)
+      .getOrThrow<string>('SEED_DEMO_PASSWORD');
+    await db.delete(users).where(eq(users.email, DEMO_EMAIL));
     const [user] = await db
       .insert(users)
       .values({
-        email: SEED_EMAIL,
-        passwordHash: await hash(SEED_PASSWORD, ARGON2_OPTIONS),
+        email: DEMO_EMAIL,
+        passwordHash: await hash(password, ARGON2_OPTIONS),
       })
       .returning({ id: users.id });
-    const seeded = await db
-      .insert(projects)
-      .values(
-        ['Shop (60%)', 'Blog (30%)', 'Docs (10%)'].map((name) => ({
-          ownerId: user!.id,
-          name,
-          allowedOrigins: ['https://seed.example'],
-        })),
-      )
-      .returning({ id: projects.id, name: projects.name });
+    const seeded: { id: string; name: string }[] = [];
+    for (const name of DEMO_PROJECTS) {
+      const [project] = await db
+        .insert(projects)
+        .values({ ownerId: user!.id, name, allowedOrigins: [DEMO_ORIGIN] })
+        .returning({ id: projects.id, name: projects.name });
+      seeded.push(project!);
+    }
     const projectIds = seeded.map((project) => project.id);
-    log(`Seed user ${SEED_EMAIL} / ${SEED_PASSWORD}`);
+    log(`Demo user ${DEMO_EMAIL} (password from SEED_DEMO_PASSWORD)`);
     for (const project of seeded) log(`Project ${project.name}: ${project.id}`);
 
     const end = new Date();
     const start = new Date(end.getTime() - days * DAY_MS);
+    const releaseStarts = RELEASES.map(({ daysBeforeEnd }) =>
+      daysBeforeEnd === null
+        ? start
+        : new Date(end.getTime() - daysBeforeEnd * DAY_MS),
+    );
     const dayStart = (date: Date) =>
       new Date(Math.floor(date.getTime() / DAY_MS) * DAY_MS);
 
@@ -258,7 +270,7 @@ async function main(): Promise<void> {
           (end.getTime() - start.getTime()),
       );
       if (count === 0) continue;
-      await insertChunk(db, projectIds, start, from, to, count);
+      await insertChunk(db, projectIds, releaseStarts, from, to, count);
       inserted += count;
       log(
         `Inserted ${count} events for ${day.toISOString().slice(0, 10)} (${inserted} total)`,

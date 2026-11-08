@@ -43,9 +43,9 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
         <h1 className="mb-1 text-lg font-semibold">
           {register ? 'Create an account' : 'Sign in'}
         </h1>
-        <p className="mb-6 text-sm text-zinc-500">Web Vitals Monitor</p>
+        <p className="mb-6 text-sm text-muted">Web Vitals Monitor</p>
         <form
-          className="space-y-4 rounded-lg border border-zinc-200 bg-white p-5"
+          className="space-y-4 rounded-lg border border-line bg-surface p-5"
           onSubmit={(event) => {
             event.preventDefault();
             const data = new FormData(event.currentTarget);
@@ -87,11 +87,11 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
             {register ? 'Create account' : 'Sign in'}
           </Button>
         </form>
-        <p className="mt-4 text-center text-sm text-zinc-500">
+        <p className="mt-4 text-center text-sm text-muted">
           {register ? 'Already have an account? ' : 'No account yet? '}
           <Link
             href={register ? '/login' : '/register'}
-            className="font-medium text-zinc-900 underline-offset-4 hover:underline"
+            className="font-medium text-fg underline-offset-4 hover:underline"
           >
             {register ? 'Sign in' : 'Create one'}
           </Link>

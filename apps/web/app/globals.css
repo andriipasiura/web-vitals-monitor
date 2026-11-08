@@ -3,13 +3,67 @@
 @theme inline {
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --color-accent: #2563eb;
-  --color-good: #15803d;
-  --color-ni: #b45309;
-  --color-poor: #dc2626;
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-subtle: var(--subtle);
+  --color-line: var(--line);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-good: var(--good);
+  --color-ni: var(--ni);
+  --color-poor: var(--poor);
+}
+
+:root {
+  color-scheme: light;
+  --canvas: #fafafa;
+  --surface: #ffffff;
+  --subtle: #f4f4f5;
+  --line: #e4e4e7;
+  --fg: #18181b;
+  --muted: #71717a;
+  --faint: #a1a1aa;
+  --accent: #2563eb;
+  --good: #15803d;
+  --ni: #b45309;
+  --poor: #dc2626;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --canvas: #09090b;
+    --surface: #111113;
+    --subtle: #1f1f23;
+    --line: #27272a;
+    --fg: #fafafa;
+    --muted: #a1a1aa;
+    --faint: #71717a;
+    --accent: #60a5fa;
+    --good: #4ade80;
+    --ni: #fbbf24;
+    --poor: #f87171;
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --canvas: #09090b;
+  --surface: #111113;
+  --subtle: #1f1f23;
+  --line: #27272a;
+  --fg: #fafafa;
+  --muted: #a1a1aa;
+  --faint: #71717a;
+  --accent: #60a5fa;
+  --good: #4ade80;
+  --ni: #fbbf24;
+  --poor: #f87171;
 }
 
 body {
-  background: #fafafa;
-  color: var(--color-zinc-900);
+  background: var(--canvas);
+  color: var(--fg);
 }

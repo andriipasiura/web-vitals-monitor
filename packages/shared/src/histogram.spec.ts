@@ -4,6 +4,7 @@ import {
   bucketIndex,
   METRIC_BUCKET_BOUNDARIES,
   percentileFromHistogram,
+  percentileStandardError,
 } from './histogram.js';
 import { METRIC_NAMES, METRIC_THRESHOLDS, rateMetric } from './metrics.js';
 
@@ -110,5 +111,34 @@ describe('percentileFromHistogram', () => {
     expect(() => percentileFromHistogram('LCP', [1, 2], 0.5)).toThrow(
       'Expected 65 buckets for LCP, got 2',
     );
+  });
+});
+
+describe('percentileStandardError', () => {
+  it('is null without samples or in the open-ended bucket', () => {
+    expect(percentileStandardError('LCP', histogram('LCP', []), 0.75)).toBe(
+      null,
+    );
+    expect(
+      percentileStandardError('LCP', histogram('LCP', [90_000]), 0.75),
+    ).toBe(null);
+  });
+
+  it('uses the density of the bucket holding the percentile', () => {
+    const buckets = histogram('LCP', new Array<number>(100).fill(2050));
+    expect(percentileStandardError('LCP', buckets, 0.75)).toBeCloseTo(
+      Math.sqrt(0.1875 / 100) * 100,
+    );
+  });
+
+  it('shrinks with more samples and with tighter values', () => {
+    const spread = (n: number, step: number) =>
+      histogram(
+        'LCP',
+        Array.from({ length: n }, (_, i) => 1000 + (i % 20) * step),
+      );
+    const se = (b: number[]) => percentileStandardError('LCP', b, 0.75)!;
+    expect(se(spread(800, 100))).toBeLessThan(se(spread(200, 100)));
+    expect(se(spread(200, 50))).toBeLessThan(se(spread(200, 100)));
   });
 });

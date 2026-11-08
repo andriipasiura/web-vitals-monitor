@@ -3,10 +3,12 @@ import {
   AttributionQuerySchema,
   MetricsQuerySchema,
   PathsQuerySchema,
+  ReleasesQuerySchema,
   RoutesQuerySchema,
   type AttributionQuery,
   type MetricsQuery,
   type PathsQuery,
+  type ReleasesQuery,
   type RoutesQuery,
 } from '@rum/shared';
 import { CurrentUser, type AuthUser } from '../auth/auth.decorators.js';
@@ -34,6 +36,15 @@ export class AnalyticsController {
     @Query(new ZodValidationPipe(RoutesQuerySchema)) query: RoutesQuery,
   ) {
     return this.analyticsService.routes(user.id, id, query);
+  }
+
+  @Get('releases')
+  releases(
+    @CurrentUser() user: AuthUser,
+    @Param('id', uuidParam) id: string,
+    @Query(new ZodValidationPipe(ReleasesQuerySchema)) query: ReleasesQuery,
+  ) {
+    return this.analyticsService.releases(user.id, id, query);
   }
 
   @Get('routes/paths')

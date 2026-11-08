@@ -7,11 +7,20 @@ import { rangeOf, toQuery, type Filters } from './filters';
 import type {
   ApiKey,
   AttributionResponse,
+  Me,
   MetricsResponse,
   PathsResponse,
   Project,
+  ReleasesResponse,
   RoutesResponse,
 } from './types';
+
+export const useMe = () =>
+  useQuery({
+    queryKey: ['me'],
+    queryFn: () => api<Me>('/v1/auth/me'),
+    staleTime: Infinity,
+  });
 
 export const useProjects = () =>
   useQuery({
@@ -49,6 +58,7 @@ export function useMetrics(
   projectId: string,
   metric: MetricName,
   filters: Filters,
+  { enabled = true }: { enabled?: boolean } = {},
 ) {
   const query = toQuery({
     metric,
@@ -58,19 +68,26 @@ export function useMetrics(
   });
   return useQuery({
     queryKey: ['metrics', projectId, query],
+    enabled,
     placeholderData: sameProject(projectId),
     queryFn: () =>
       api<MetricsResponse>(`/v1/projects/${projectId}/metrics?${query}`),
   });
 }
 
-export function useRoutes(projectId: string, filters: Filters) {
+export function useRoutes(
+  projectId: string,
+  filters: Filters,
+  { minSamples, limit }: { minSamples?: number; limit?: number } = {},
+) {
   const { from, to } = rangeOf(filters.period);
   const query = toQuery({
     metric: filters.metric,
     from,
     to,
     ...segmentFilters(filters),
+    min_samples: minSamples,
+    limit,
   });
   return useQuery({
     queryKey: ['routes', projectId, query],
@@ -113,5 +130,21 @@ export function useAttribution(
       api<AttributionResponse>(
         `/v1/projects/${projectId}/routes/attribution?${query}`,
       ),
+  });
+}
+
+export function useReleases(projectId: string, filters: Filters) {
+  const { from, to } = rangeOf(filters.period);
+  const query = toQuery({
+    from,
+    to,
+    percentile: filters.percentile,
+    device_type: filters.device,
+  });
+  return useQuery({
+    queryKey: ['releases', projectId, query],
+    placeholderData: sameProject(projectId),
+    queryFn: () =>
+      api<ReleasesResponse>(`/v1/projects/${projectId}/releases?${query}`),
   });
 }

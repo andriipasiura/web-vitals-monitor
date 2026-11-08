@@ -29,6 +29,7 @@ interface EventRow {
   route?: string;
   path?: string;
   deviceType?: DeviceType;
+  release?: string;
   receivedAt?: Date;
   attribution?: Record<string, string>;
 }
@@ -68,6 +69,7 @@ describe('Analytics (e2e)', () => {
             route,
             routeSource: 'server',
             deviceType: row.deviceType ?? 'mobile',
+            release: row.release,
             attribution: row.attribution,
             clientEventId: randomUUID(),
             receivedAt: row.receivedAt ?? at(0),
@@ -104,6 +106,7 @@ describe('Analytics (e2e)', () => {
     it.each([
       ['/metrics', { metric: 'LCP', ...period }],
       ['/routes', { metric: 'LCP', ...period }],
+      ['/releases', period],
       ['/routes/paths', { metric: 'LCP', route: '/a' }],
       ['/routes/attribution', { route: '/a' }],
     ])('returns 404 for another user’s project on %s', async (path, query) => {
@@ -263,15 +266,114 @@ describe('Analytics (e2e)', () => {
           value: 4950,
           count: 2,
           shares: { good: 0, needsImprovement: 0.5, poor: 0.5 },
+          previousValue: null,
+          previousCount: 0,
         },
         {
           route: '/fast',
           value: 475,
           count: 1,
           shares: { good: 1, needsImprovement: 0, poor: 0 },
+          previousValue: null,
+          previousCount: 0,
         },
       ]);
       expect(body(limited).routes.map((r) => r.route)).toEqual(['/slow']);
+
+      const busy = await get('/routes', {
+        metric: 'LCP',
+        ...period,
+        min_samples: 2,
+      }).expect(200);
+      expect(body(busy).routes.map((r) => r.route)).toEqual(['/slow']);
+    });
+  });
+
+  it('GET /routes compares each route with the previous period', async () => {
+    await insert([
+      { value: 1000, route: '/a', receivedAt: at(-2) },
+      { value: 3000, route: '/a', receivedAt: at(0) },
+    ]);
+    await new RollupsService(database(app)).recompute(at(-3), at(1));
+
+    const res = await get('/routes', { metric: 'LCP', ...period }).expect(200);
+
+    expect(res.body).toMatchObject({
+      routes: [
+        { route: '/a', value: 2975, previousValue: 975, previousCount: 1 },
+      ],
+    });
+  });
+
+  describe('GET /releases', () => {
+    it('summarizes releases and finds the per-route regression', async () => {
+      const n = 200;
+      const many = (
+        value: number,
+        release: string,
+        route: string,
+        offset: number,
+      ) =>
+        Array.from({ length: n }, () => ({
+          value,
+          release,
+          route,
+          receivedAt: at(offset),
+        }));
+      await insert([
+        ...many(2000, '1.0', '/checkout', 0),
+        ...many(2600, '1.1', '/checkout', 1),
+        ...many(2000, '1.0', '/cart', 0),
+        ...many(2050, '1.1', '/cart', 1),
+        { value: 100, metric: 'INP', release: '1.1', receivedAt: at(1) },
+        { value: 900, receivedAt: at(1) },
+      ]);
+      await new RollupsService(database(app)).recompute(hour, at(2));
+
+      const res = await get('/releases', period).expect(200);
+
+      expect(res.body).toMatchObject({
+        percentile: 'p75',
+        releases: [
+          {
+            release: '1.1',
+            firstSeen: new Date(hour.getTime() + HOUR_MS).toISOString(),
+            count: 2 * n + 1,
+            metrics: {
+              LCP: { count: 2 * n, status: 'regressed' },
+              INP: { value: expect.any(Number), count: 1, change: null },
+              CLS: { value: null, count: 0 },
+            },
+          },
+          {
+            release: '1.0',
+            firstSeen: hour.toISOString(),
+            count: 2 * n,
+            metrics: { LCP: { count: 2 * n, change: null } },
+          },
+        ],
+        regression: {
+          metric: 'LCP',
+          route: '/checkout',
+          release: '1.1',
+          previousRelease: '1.0',
+          before: { count: n },
+          after: { count: n },
+        },
+      });
+    });
+
+    it('returns no regression without releases', async () => {
+      await insert([{ value: 1000 }]);
+      await new RollupsService(database(app)).recompute(hour, at(1));
+
+      const res = await get('/releases', period).expect(200);
+
+      expect(res.body).toEqual({
+        percentile: 'p75',
+        releases: [],
+        regression: null,
+      });
     });
   });
 

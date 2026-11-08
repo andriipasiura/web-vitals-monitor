@@ -35,7 +35,7 @@ function Paths({
   return (
     <Panel
       title={`Slowest paths by ${filters.metric} ${filters.percentile}`}
-      actions={<span className="text-xs text-zinc-500">Last 7 days</span>}
+      actions={<span className="text-xs text-muted">Last 7 days</span>}
     >
       <QueryState
         query={paths}
@@ -67,12 +67,13 @@ function Paths({
                         <MetricValue
                           metric={filters.metric}
                           value={row.value}
+                          dot
                         />
                       </TableCell>
                       <TableCell>
                         <ShareBar shares={row.shares} />
                       </TableCell>
-                      <TableCell className="text-right text-zinc-600">
+                      <TableCell className="text-right text-muted">
                         {formatCount(row.count)}
                       </TableCell>
                     </TableRow>
@@ -80,7 +81,7 @@ function Paths({
               </TableBody>
             </Table>
             {paths.hasNextPage && (
-              <div className="border-t border-zinc-100 p-3 text-center">
+              <div className="border-t border-line p-3 text-center">
                 <Button
                   variant="outline"
                   size="sm"
@@ -110,7 +111,7 @@ function Targets({
   return (
     <Panel
       title={title}
-      actions={<span className="text-xs text-zinc-500">Last 7 days</span>}
+      actions={<span className="text-xs text-muted">Last 7 days</span>}
     >
       {rows.length === 0 ? (
         <Empty>No {metric} attribution in the last 7 days.</Empty>
@@ -133,9 +134,9 @@ function Targets({
                   {row.target}
                 </TableCell>
                 <TableCell className="text-right font-medium">
-                  <MetricValue metric={metric} value={row.p75} />
+                  <MetricValue metric={metric} value={row.p75} dot />
                 </TableCell>
-                <TableCell className="text-right text-zinc-600">
+                <TableCell className="text-right text-muted">
                   {formatCount(row.count)}
                 </TableCell>
               </TableRow>
@@ -166,11 +167,12 @@ function RouteDetails({
         className={cn(trend.isPlaceholderData && 'opacity-60')}
         actions={
           trend.data?.summary.count ? (
-            <span className="flex items-baseline gap-3 text-xs text-zinc-500 tabular-nums">
+            <span className="flex items-baseline gap-3 text-xs text-muted tabular-nums">
               <MetricValue
                 metric={filters.metric}
                 value={trend.data.summary.value}
-                className="text-lg font-semibold"
+                dot
+                className="text-lg font-semibold text-fg"
               />
               {formatSamples(trend.data.summary.count)}
             </span>
@@ -188,7 +190,8 @@ function RouteDetails({
               <Trend
                 metric={data.metric}
                 points={data.series}
-                {...rangeOf(filters.period)}
+                from={rangeOf(filters.period).from}
+                label={route}
               />
             )}
           </QueryState>
@@ -225,11 +228,11 @@ export default function RoutePage() {
       <div className="flex items-center gap-2 text-sm">
         <Link
           href={`/projects/${id}/routes?${toQuery(rest)}`}
-          className="text-zinc-500 hover:text-zinc-900"
+          className="text-muted hover:text-fg"
         >
           Routes
         </Link>
-        <span aria-hidden className="text-zinc-400">
+        <span aria-hidden className="text-faint">
           /
         </span>
         <h1 className="truncate font-mono font-medium">
