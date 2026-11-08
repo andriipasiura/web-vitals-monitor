@@ -1,20 +1,13 @@
-import Link from 'next/link';
-import { LogoutButton, SessionGate } from '@/components/session';
+import { SessionGate } from '@/components/session';
+import { Sidebar } from '@/components/sidebar';
 
 export default function AppLayout({ children }: LayoutProps<'/'>) {
   return (
-    <>
-      <header className="border-b border-zinc-200 bg-white">
-        <div className="mx-auto flex h-12 max-w-6xl items-center justify-between px-4">
-          <Link href="/projects" className="text-sm font-semibold">
-            Web Vitals Monitor
-          </Link>
-          <LogoutButton />
-        </div>
-      </header>
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
-        <SessionGate>{children}</SessionGate>
-      </main>
-    </>
+    <SessionGate>
+      <div className="flex flex-1 flex-col lg:flex-row">
+        <Sidebar />
+        <main className="min-w-0 flex-1 px-4 py-5 lg:px-8">{children}</main>
+      </div>
+    </SessionGate>
   );
 }

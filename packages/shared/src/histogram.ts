@@ -70,3 +70,27 @@ export function percentileFromHistogram(
   }
   return edges[edges.length - 1]!;
 }
+
+export function percentileStandardError(
+  metric: MetricName,
+  buckets: readonly number[],
+  p: number,
+): number | null {
+  const edges = METRIC_BUCKET_BOUNDARIES[metric];
+  const total = buckets.reduce((sum, count) => sum + count, 0);
+  if (total === 0) return null;
+
+  const rank = p * total;
+  let below = 0;
+  for (const [i, count] of buckets.entries()) {
+    if (count > 0 && below + count >= rank) {
+      const upper = edges[i];
+      if (upper === undefined) return null;
+      const width = upper - (i === 0 ? 0 : edges[i - 1]!);
+      const density = count / total / width;
+      return Math.sqrt((p * (1 - p)) / total) / density;
+    }
+    below += count;
+  }
+  return null;
+}

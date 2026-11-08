@@ -64,24 +64,28 @@ describe('Query cache (e2e)', () => {
   });
 
   it.each([
-    ['/metrics', { metric: 'LCP', ...period }],
-    ['/routes', { metric: 'LCP', ...period }],
-  ])('serves a repeated %s query from the cache', async (path, query) => {
-    const execute = vi.spyOn(database(app), 'execute');
+    ['/metrics', { metric: 'LCP', ...period }, 1],
+    ['/routes', { metric: 'LCP', ...period }, 2],
+    ['/releases', period, 5],
+  ])(
+    'serves a repeated %s query from the cache',
+    async (path, query, loads) => {
+      const execute = vi.spyOn(database(app), 'execute');
 
-    const first = await get(app, path, query);
-    expect(execute).toHaveBeenCalledTimes(1);
+      const first = await get(app, path, query);
+      expect(execute).toHaveBeenCalledTimes(loads);
 
-    const second = await get(app, path, {
-      percentile: 'p75',
-      to: query.to,
-      from: query.from,
-      metric: 'LCP',
-    });
+      const second = await get(app, path, {
+        percentile: 'p75',
+        to: query.to,
+        from: query.from,
+        metric: 'LCP',
+      });
 
-    expect(execute).toHaveBeenCalledTimes(1);
-    expect(second.body).toEqual(first.body);
-  });
+      expect(execute).toHaveBeenCalledTimes(loads);
+      expect(second.body).toEqual(first.body);
+    },
+  );
 
   it('stores entries for 60 s ± 10 %', async () => {
     await get(app, '/metrics', { metric: 'LCP', ...period });
@@ -122,7 +126,10 @@ describe('Query cache (e2e)', () => {
       builder.overrideProvider(REDIS).useValue(deadRedis()),
     );
     try {
-      for (const path of ['/metrics', '/routes']) {
+      for (const [path, loads] of [
+        ['/metrics', 1],
+        ['/routes', 2],
+      ] as const) {
         const query = { metric: 'LCP', ...period };
         const expected = await get(app, path, query);
         const execute = vi.spyOn(database(down), 'execute');
@@ -132,7 +139,7 @@ describe('Query cache (e2e)', () => {
 
         expect(first.body).toEqual(expected.body);
         expect(second.body).toEqual(expected.body);
-        expect(execute).toHaveBeenCalledTimes(2);
+        expect(execute).toHaveBeenCalledTimes(2 * loads);
         execute.mockRestore();
       }
     } finally {

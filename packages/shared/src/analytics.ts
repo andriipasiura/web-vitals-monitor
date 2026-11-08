@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { DeviceTypeSchema, ReleaseSchema, RouteSchema } from './events.js';
-import { MetricNameSchema } from './metrics.js';
+import { MetricNameSchema, type MetricName } from './metrics.js';
 
 export const ANALYTICS_LIMITS = {
   maxRangeDays: 90,
@@ -11,7 +11,58 @@ export const ANALYTICS_LIMITS = {
   maxRoutes: 200,
   maxAttributionTargets: 20,
   minInpTargetSamples: 5,
+  minRegressionSamples: 200,
+  minRegressionChange: 0.1,
 } as const;
+
+export const REGRESSION_MIN_ABSOLUTE_CHANGE = {
+  LCP: 100,
+  INP: 20,
+  CLS: 0.02,
+  TTFB: 50,
+  FCP: 100,
+} as const satisfies Record<MetricName, number>;
+
+export interface Sample {
+  value: number | null;
+  count: number;
+}
+
+export type ChangeStatus = 'regressed' | 'improved' | 'unchanged';
+
+export function relativeChange(
+  before: number | null,
+  after: number | null,
+): number | null {
+  if (before === null || after === null || before === 0) return null;
+  return (after - before) / before;
+}
+
+export function classifyChange(
+  metric: MetricName,
+  before: Sample,
+  after: Sample,
+): ChangeStatus {
+  const { minRegressionSamples, minRegressionChange } = ANALYTICS_LIMITS;
+  if (
+    before.value === null ||
+    after.value === null ||
+    before.count < minRegressionSamples ||
+    after.count < minRegressionSamples
+  ) {
+    return 'unchanged';
+  }
+  const delta = after.value - before.value;
+  const relative =
+    before.value === 0 ? Infinity : Math.abs(delta) / before.value;
+  if (
+    Math.abs(delta) < REGRESSION_MIN_ABSOLUTE_CHANGE[metric] ||
+    relative < minRegressionChange
+  ) {
+    return 'unchanged';
+  }
+  return delta > 0 ? 'regressed' : 'improved';
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -94,12 +145,26 @@ export const RoutesQuerySchema = withValidPeriod(
     ...filters,
     percentile: PercentileSchema.default('p75'),
     limit: limit(ANALYTICS_LIMITS.defaultRoutes, ANALYTICS_LIMITS.maxRoutes),
+    min_samples: z.coerce.number().int().min(1).optional(),
+  }),
+).transform(({ device_type, min_samples, ...query }) => ({
+  ...query,
+  deviceType: device_type,
+  minSamples: min_samples,
+}));
+export type RoutesQuery = z.output<typeof RoutesQuerySchema>;
+
+export const ReleasesQuerySchema = withValidPeriod(
+  z.object({
+    ...period,
+    device_type: DeviceTypeSchema.optional(),
+    percentile: PercentileSchema.default('p75'),
   }),
 ).transform(({ device_type, ...query }) => ({
   ...query,
   deviceType: device_type,
 }));
-export type RoutesQuery = z.output<typeof RoutesQuerySchema>;
+export type ReleasesQuery = z.output<typeof ReleasesQuerySchema>;
 
 export const PathsQuerySchema = z
   .object({

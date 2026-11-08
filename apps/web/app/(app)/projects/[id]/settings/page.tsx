@@ -4,7 +4,7 @@ import { PROJECT_LIMITS } from '@rum/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
-import { Panel, QueryState } from '@/components/states';
+import { PageHeader, Panel, QueryState } from '@/components/states';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -72,7 +72,7 @@ function ProjectForm({ project }: { project: Project }) {
           placeholder="https://example.com"
           defaultValue={project.allowedOrigins.join('\n')}
         />
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-muted">
           Events are accepted only from these origins, up to{' '}
           {PROJECT_LIMITS.maxAllowedOrigins}.
         </p>
@@ -92,7 +92,7 @@ function ProjectForm({ project }: { project: Project }) {
           Save
         </Button>
         {update.isSuccess && (
-          <span role="status" className="text-sm text-zinc-500">
+          <span role="status" className="text-sm text-muted">
             Saved
           </span>
         )}
@@ -105,12 +105,12 @@ function Snippet({ apiKey }: { apiKey: string }) {
   const [copied, setCopied] = useState(false);
   const snippet = `<script src="${window.location.origin}/rum.js" data-key="${apiKey}" data-endpoint="${API_URL}" defer></script>`;
   return (
-    <div className="space-y-3 border-b border-zinc-100 bg-zinc-50 p-4">
+    <div className="space-y-3 border-b border-line bg-subtle p-4">
       <p className="text-sm">
         Copy the key now: it is shown only once. Add this tag to every page of
         your site.
       </p>
-      <pre className="rounded-md break-all whitespace-pre-wrap border border-zinc-200 bg-white p-3 font-mono text-xs">
+      <pre className="rounded-md break-all whitespace-pre-wrap border border-line bg-surface p-3 font-mono text-xs">
         {snippet}
       </pre>
       <Button
@@ -185,12 +185,12 @@ function Keys({ projectId }: { projectId: string }) {
                   <TableCell className="font-mono text-xs">
                     {key.prefix}…
                   </TableCell>
-                  <TableCell className="text-zinc-500">
+                  <TableCell className="text-muted">
                     {formatDate(key.createdAt)}
                   </TableCell>
                   <TableCell>
                     {key.revokedAt ? (
-                      <span className="text-zinc-400">
+                      <span className="text-faint">
                         Revoked {formatDate(key.revokedAt)}
                       </span>
                     ) : (
@@ -232,13 +232,16 @@ export default function SettingsPage() {
   const project = useProject(id);
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]">
-      <Panel title="Project" className="self-start">
-        <QueryState query={project}>
-          {(data) => <ProjectForm project={data} />}
-        </QueryState>
-      </Panel>
-      <Keys projectId={id} />
+    <div className="space-y-4">
+      <PageHeader title="Settings" />
+      <div className="grid gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]">
+        <Panel title="Project" className="self-start">
+          <QueryState query={project}>
+            {(data) => <ProjectForm project={data} />}
+          </QueryState>
+        </Panel>
+        <Keys projectId={id} />
+      </div>
     </div>
   );
 }

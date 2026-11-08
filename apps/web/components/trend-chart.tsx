@@ -5,6 +5,7 @@ import { useEffect, useRef } from 'react';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 import { formatSamples, formatValue } from '@/lib/format';
+import { cssVar, useTheme } from '@/lib/theme';
 
 export interface TrendPoint {
   time: string;
@@ -12,12 +13,19 @@ export interface TrendPoint {
   count: number;
 }
 
+export interface TrendMarker {
+  time: string;
+  label: string;
+  highlight?: boolean;
+}
+
+export interface TrendSeries {
+  label: string;
+  points: TrendPoint[];
+}
+
 const HEIGHT = 240;
-const INK = '#71717a';
-const GRID = '#f4f4f5';
-const ACCENT = '#2563eb';
-const GOOD = '#15803d';
-const POOR = '#dc2626';
+const NO_MARKERS: TrendMarker[] = [];
 
 const timeFormat = new Intl.DateTimeFormat('en', {
   month: 'short',
@@ -26,36 +34,59 @@ const timeFormat = new Intl.DateTimeFormat('en', {
 });
 
 const fontFamily = () => getComputedStyle(document.body).fontFamily;
+const toSeconds = (time: string) => new Date(time).getTime() / 1000;
 
-function thresholdsPlugin(metric: MetricName): uPlot.Plugin {
-  const lines = [
-    { value: METRIC_THRESHOLDS[metric].good, color: GOOD, label: 'good' },
-    { value: METRIC_THRESHOLDS[metric].poor, color: POOR, label: 'poor' },
+function yAxisScale(metric: MetricName, max: number) {
+  if (metric === 'CLS') {
+    return {
+      incrs: [0.05, 0.1, 0.25, 0.5, 1],
+      format: (v: number) => v.toFixed(2),
+    };
+  }
+  if (max >= 3000) {
+    return {
+      incrs: [1000, 2000, 5000, 10000, 20000],
+      format: (v: number) => `${Math.round(v / 1000)} s`,
+    };
+  }
+  return {
+    incrs: [50, 100, 200, 250, 500, 1000],
+    format: (v: number) => `${Math.round(v)} ms`,
+  };
+}
+
+function zonesPlugin(metric: MetricName): uPlot.Plugin {
+  const { good, poor } = METRIC_THRESHOLDS[metric];
+  const zones = [
+    { from: 0, to: good, color: cssVar('--good'), label: 'Good' },
+    { from: good, to: poor, color: cssVar('--ni'), label: 'Needs improvement' },
+    { from: poor, to: Infinity, color: cssVar('--poor'), label: 'Poor' },
   ];
   return {
     hooks: {
-      draw: (u) => {
+      drawClear: (u) => {
         const ctx = u.ctx;
-        const { left, top, width, height } = u.bbox;
+        const { left, width } = u.bbox;
+        const px = devicePixelRatio;
+        const yMax = u.scales.y!.max!;
         ctx.save();
-        ctx.font = `${10 * devicePixelRatio}px ${fontFamily()}`;
+        ctx.font = `${10 * px}px ${fontFamily()}`;
         ctx.textAlign = 'right';
-        ctx.textBaseline = 'bottom';
-        for (const line of lines) {
-          const y = Math.round(u.valToPos(line.value, 'y', true));
-          if (y < top || y > top + height) continue;
-          ctx.strokeStyle = line.color;
-          ctx.fillStyle = line.color;
-          ctx.lineWidth = devicePixelRatio;
-          ctx.setLineDash([4 * devicePixelRatio, 4 * devicePixelRatio]);
-          ctx.beginPath();
-          ctx.moveTo(left, y);
-          ctx.lineTo(left + width, y);
-          ctx.stroke();
+        for (const zone of zones) {
+          if (zone.from >= yMax) continue;
+          const y1 = u.valToPos(Math.min(zone.to, yMax), 'y', true);
+          const y0 = u.valToPos(zone.from, 'y', true);
+          ctx.globalAlpha = 0.07;
+          ctx.fillStyle = zone.color;
+          ctx.fillRect(left, y1, width, y0 - y1);
+          if (y0 - y1 < 14 * px) continue;
+          const atTop = zone.to === Infinity;
+          ctx.globalAlpha = 0.9;
+          ctx.textBaseline = atTop ? 'top' : 'bottom';
           ctx.fillText(
-            line.label,
-            left + width - 4 * devicePixelRatio,
-            y - 3 * devicePixelRatio,
+            zone.label,
+            left + width - 4 * px,
+            atTop ? y1 + 3 * px : y0 - 3 * px,
           );
         }
         ctx.restore();
@@ -64,31 +95,74 @@ function thresholdsPlugin(metric: MetricName): uPlot.Plugin {
   };
 }
 
-function tooltipPlugin(metric: MetricName, points: TrendPoint[]): uPlot.Plugin {
+function markersPlugin(markers: TrendMarker[]): uPlot.Plugin {
+  const muted = cssVar('--muted');
+  const faint = cssVar('--faint');
+  const poor = cssVar('--poor');
+  return {
+    hooks: {
+      draw: (u) => {
+        const ctx = u.ctx;
+        const { left, top, width, height } = u.bbox;
+        const px = devicePixelRatio;
+        ctx.save();
+        ctx.font = `${10 * px}px ${fontFamily()}`;
+        ctx.textBaseline = 'top';
+        ctx.lineWidth = px;
+        for (const marker of markers) {
+          const x = Math.round(u.valToPos(toSeconds(marker.time), 'x', true));
+          if (x <= left || x >= left + width) continue;
+          ctx.strokeStyle = marker.highlight ? poor : faint;
+          ctx.fillStyle = marker.highlight ? poor : muted;
+          ctx.setLineDash([2 * px, 3 * px]);
+          ctx.beginPath();
+          ctx.moveTo(x, top);
+          ctx.lineTo(x, top + height);
+          ctx.stroke();
+          const flip =
+            x + ctx.measureText(marker.label).width + 8 * px > left + width;
+          ctx.textAlign = flip ? 'right' : 'left';
+          ctx.fillText(marker.label, x + (flip ? -4 : 4) * px, top + 2 * px);
+        }
+        ctx.restore();
+      },
+    },
+  };
+}
+
+function tooltipPlugin(
+  metric: MetricName,
+  rows: { label: string; byTime: Map<number, TrendPoint> }[],
+): uPlot.Plugin {
   let tip: HTMLDivElement;
   return {
     hooks: {
       init: (u) => {
         tip = document.createElement('div');
         tip.className =
-          'pointer-events-none absolute z-10 hidden rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs tabular-nums shadow-sm';
+          'pointer-events-none absolute z-10 hidden rounded-md border border-line bg-surface px-2 py-1 text-xs tabular-nums shadow-sm';
         u.over.appendChild(tip);
       },
       setCursor: (u) => {
         const i = u.cursor.idx;
-        const point = i === null || i === undefined ? undefined : points[i];
-        if (!point || u.cursor.left === undefined || u.cursor.left < 0) {
+        const time = i === null || i === undefined ? undefined : u.data[0][i];
+        const main = time === undefined ? undefined : rows[0]!.byTime.get(time);
+        if (!main || u.cursor.left === undefined || u.cursor.left < 0) {
           tip.classList.add('hidden');
           return;
         }
         tip.replaceChildren();
-        const value = document.createElement('div');
-        value.className = 'font-medium text-zinc-900';
-        value.textContent = formatValue(metric, point.value);
+        for (const [index, row] of rows.entries()) {
+          const point = row.byTime.get(time!);
+          const line = document.createElement('div');
+          line.className = index === 0 ? 'font-medium text-fg' : 'text-muted';
+          line.textContent = `${rows.length > 1 ? `${row.label} ` : ''}${formatValue(metric, point?.value)}`;
+          tip.append(line);
+        }
         const meta = document.createElement('div');
-        meta.className = 'text-zinc-500';
-        meta.textContent = `${timeFormat.format(new Date(point.time))} · ${formatSamples(point.count)}`;
-        tip.append(value, meta);
+        meta.className = 'text-muted';
+        meta.textContent = `${timeFormat.format(new Date(main.time))} · ${formatSamples(main.count)}`;
+        tip.append(meta);
         tip.classList.remove('hidden');
         const flip = u.cursor.left > u.over.clientWidth / 2;
         tip.style.left = `${u.cursor.left + (flip ? -tip.offsetWidth - 8 : 8)}px`;
@@ -102,67 +176,99 @@ export default function TrendChart({
   metric,
   points,
   from,
-  to,
+  label = 'All routes',
+  secondary,
+  markers = NO_MARKERS,
 }: {
   metric: MetricName;
   points: TrendPoint[];
   from: string;
-  to: string;
+  label?: string;
+  secondary?: TrendSeries;
+  markers?: TrendMarker[];
 }) {
   const container = useRef<HTMLDivElement>(null);
+  const { isDark } = useTheme();
 
   useEffect(() => {
     const el = container.current;
     if (!el) return;
-    const values = points.map((p) => p.value);
-    const max = Math.max(
-      METRIC_THRESHOLDS[metric].poor * 1.1,
-      ...values.map((v) => v ?? 0),
+    const series = [{ label, points }, ...(secondary ? [secondary] : [])];
+    const tables = series.map(
+      (s) =>
+        [
+          s.points.map((p) => toSeconds(p.time)),
+          s.points.map((p) => p.value),
+        ] as uPlot.AlignedData,
     );
+    const data = tables.length > 1 ? uPlot.join(tables) : tables[0]!;
+    const values = series.flatMap((s) => s.points.map((p) => p.value ?? 0));
+    const max = Math.max(METRIC_THRESHOLDS[metric].poor * 1.1, ...values);
+    const axis = yAxisScale(metric, max);
+    const last = points.at(-1);
+    const xMax = last ? toSeconds(last.time) : Date.now() / 1000;
+    const ink = cssVar('--muted');
+    const grid = cssVar('--line');
+
     const plot = new uPlot(
       {
         width: el.clientWidth,
         height: HEIGHT,
         legend: { show: false },
-        cursor: { y: false, points: { size: 8 } },
+        cursor: { y: false, points: { size: 7 } },
         scales: {
-          x: {
-            time: true,
-            range: [
-              new Date(from).getTime() / 1000,
-              new Date(to).getTime() / 1000,
-            ],
-          },
+          x: { time: true, range: [toSeconds(from), xMax] },
           y: { range: [0, max * 1.05] },
         },
         axes: [
           {
-            stroke: INK,
+            stroke: ink,
             grid: { show: false },
             ticks: { show: false },
             font: `11px ${fontFamily()}`,
           },
           {
-            stroke: INK,
-            grid: { stroke: GRID, width: 1 },
+            stroke: ink,
+            grid: { stroke: grid, width: 1, dash: [2, 4] },
             ticks: { show: false },
-            size: 56,
+            size: 52,
             font: `11px ${fontFamily()}`,
-            values: (_, ticks) => ticks.map((v) => formatValue(metric, v)),
+            incrs: axis.incrs,
+            values: (_, ticks) => ticks.map(axis.format),
           },
         ],
         series: [
           {},
           {
-            stroke: ACCENT,
+            stroke: cssVar('--accent'),
             width: 2,
             spanGaps: false,
             points: { show: points.length < 3 },
           },
+          ...(secondary
+            ? [
+                {
+                  stroke: cssVar('--faint'),
+                  width: 1.5,
+                  spanGaps: false,
+                  points: { show: false },
+                },
+              ]
+            : []),
         ],
-        plugins: [thresholdsPlugin(metric), tooltipPlugin(metric, points)],
+        plugins: [
+          zonesPlugin(metric),
+          markersPlugin(markers),
+          tooltipPlugin(
+            metric,
+            series.map((s) => ({
+              label: s.label,
+              byTime: new Map(s.points.map((p) => [toSeconds(p.time), p])),
+            })),
+          ),
+        ],
       },
-      [points.map((p) => new Date(p.time).getTime() / 1000), values],
+      data,
       el,
     );
     const observer = new ResizeObserver(() =>
@@ -173,13 +279,13 @@ export default function TrendChart({
       observer.disconnect();
       plot.destroy();
     };
-  }, [metric, points, from, to]);
+  }, [metric, points, from, label, secondary, markers, isDark]);
 
   return (
     <div
       ref={container}
       role="img"
-      aria-label={`${metric} trend chart`}
+      aria-label={`${metric} trend for ${label}${secondary ? ` and ${secondary.label}` : ''}`}
       className="relative w-full"
       style={{ height: HEIGHT }}
     />

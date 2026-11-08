@@ -5,7 +5,16 @@ const percent = new Intl.NumberFormat('en', {
   style: 'percent',
   maximumFractionDigits: 0,
 });
+const signedPercent = new Intl.NumberFormat('en', {
+  style: 'percent',
+  maximumFractionDigits: 0,
+  signDisplay: 'exceptZero',
+});
 const date = new Intl.DateTimeFormat('en', { dateStyle: 'medium' });
+const shortDate = new Intl.DateTimeFormat('en', {
+  month: 'short',
+  day: 'numeric',
+});
 
 export function formatValue(
   metric: MetricName,
@@ -23,3 +32,6 @@ export const formatSamples = (value: number) =>
   `${count.format(value)} ${value === 1 ? 'sample' : 'samples'}`;
 export const formatPercent = (value: number) => percent.format(value);
 export const formatDate = (value: string) => date.format(new Date(value));
+export const formatChange = (value: number) => signedPercent.format(value);
+export const formatShortDate = (value: string) =>
+  shortDate.format(new Date(value));

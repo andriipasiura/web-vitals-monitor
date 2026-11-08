@@ -6,7 +6,7 @@ export function Skeleton({ className }: { className?: string }) {
   return (
     <div
       aria-hidden
-      className={cn('animate-pulse rounded-md bg-zinc-100', className)}
+      className={cn('animate-pulse rounded-md bg-subtle', className)}
     />
   );
 }
@@ -23,9 +23,7 @@ export function Loading({ className }: { className?: string }) {
 
 export function Empty({ children }: { children: ReactNode }) {
   return (
-    <div className="px-4 py-10 text-center text-sm text-zinc-500">
-      {children}
-    </div>
+    <div className="px-4 py-10 text-center text-sm text-muted">{children}</div>
   );
 }
 
@@ -41,7 +39,7 @@ export function ErrorState({
       role="alert"
       className="flex flex-col items-center gap-3 px-4 py-10 text-center text-sm"
     >
-      <p className="text-zinc-700">{error.message || 'Something went wrong'}</p>
+      <p className="text-fg">{error.message || 'Something went wrong'}</p>
       {onRetry && (
         <Button variant="outline" size="sm" onClick={onRetry}>
           Retry
@@ -93,15 +91,30 @@ export function Panel({
 }) {
   return (
     <section
-      className={cn('rounded-lg border border-zinc-200 bg-white', className)}
+      className={cn('rounded-lg border border-line bg-surface', className)}
     >
       {(title || actions) && (
-        <header className="flex items-center justify-between gap-4 border-b border-zinc-100 px-4 py-3">
+        <header className="flex items-center justify-between gap-4 border-b border-line px-4 py-3">
           <h2 className="text-sm font-medium">{title}</h2>
           {actions}
         </header>
       )}
       {children}
     </section>
+  );
+}
+
+export function PageHeader({
+  title,
+  children,
+}: {
+  title: ReactNode;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+      <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
+      {children}
+    </div>
   );
 }

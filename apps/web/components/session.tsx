@@ -3,7 +3,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useEffect, type ReactNode } from 'react';
-import { Button } from '@/components/ui/button';
 import { api, hasSession, refreshSession, setAccessToken } from '@/lib/api';
 import { ErrorState, Loading } from './states';
 
@@ -29,21 +28,13 @@ export function SessionGate({ children }: { children: ReactNode }) {
   return children;
 }
 
-export function LogoutButton() {
+export function useLogout() {
   const router = useRouter();
   const client = useQueryClient();
-  return (
-    <Button
-      variant="ghost"
-      size="sm"
-      onClick={async () => {
-        await api('/v1/auth/logout', { method: 'POST' }).catch(() => {});
-        setAccessToken(null);
-        client.clear();
-        router.replace('/login');
-      }}
-    >
-      Log out
-    </Button>
-  );
+  return async () => {
+    await api('/v1/auth/logout', { method: 'POST' }).catch(() => {});
+    setAccessToken(null);
+    client.clear();
+    router.replace('/login');
+  };
 }
