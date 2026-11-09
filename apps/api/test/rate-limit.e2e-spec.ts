@@ -107,11 +107,10 @@ describe('Ingestion rate limits (e2e)', () => {
     }
     await app
       .get<Redis>(REDIS)
-      .hset(
-        `rl:${RATE_LIMITS.ingestionKey.name}:${apiKeyId}`,
-        'ts',
-        Number.MAX_SAFE_INTEGER,
-      );
+      .hset(`rl:${RATE_LIMITS.ingestionKey.name}:${apiKeyId}`, {
+        tokens: 0,
+        ts: Number.MAX_SAFE_INTEGER,
+      });
 
     const res = await api(app)
       .post('/v1/events')
