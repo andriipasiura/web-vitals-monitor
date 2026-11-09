@@ -14,11 +14,14 @@
     "lint": "pnpm build:shared && pnpm -r --if-present --no-bail lint",
     "typecheck": "pnpm build:shared && pnpm -r --if-present --no-bail typecheck",
     "test": "pnpm build:shared && pnpm -r --if-present --no-bail test",
+    "test:e2e": "pnpm build:shared && pnpm --filter api test:e2e",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm size",
     "prepare": "husky",
-    "size": "pnpm build:shared && pnpm --filter @rum/sdk size"
+    "size": "pnpm build:shared && pnpm --filter @rum/sdk size",
+    "db:setup": "pnpm build:shared && pnpm --filter api db:migrate && pnpm --filter api seed --yes",
+    "seed": "pnpm build:shared && pnpm --filter api seed"
   },
   "devDependencies": {
     "husky": "^9.1.7",
