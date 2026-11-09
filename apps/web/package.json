@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "sdk": "pnpm --filter @rum/sdk build && node -e \"const fs = require('node:fs'); fs.mkdirSync('public', { recursive: true }); fs.copyFileSync(require.resolve('@rum/sdk/rum.js'), 'public/rum.js')\"",
     "predev": "pnpm sdk",
