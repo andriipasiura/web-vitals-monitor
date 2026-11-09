@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import type { Redis } from 'ioredis';
 import type request from 'supertest';
 import { ApiKeysService } from '../src/api-keys/api-keys.service.js';
 import { EventsQueue } from '../src/events/events.queue.js';
@@ -98,8 +99,18 @@ describe('Ingestion rate limits (e2e)', () => {
     const { apiKeyId } = (await app.get(ApiKeysService).findProject(key))!;
     const rateLimits = app.get(RateLimitService);
     for (let i = 0; i < RATE_LIMITS.ingestionKey.capacity; i++) {
-      await rateLimits.consume(RATE_LIMITS.ingestionKey, apiKeyId);
+      const result = await rateLimits.consume(
+        RATE_LIMITS.ingestionKey,
+        apiKeyId,
+      );
+      expect(result?.allowed).toBe(true);
     }
+    await app
+      .get<Redis>(REDIS)
+      .hset(`rl:${RATE_LIMITS.ingestionKey.name}:${apiKeyId}`, {
+        tokens: 0,
+        ts: Number.MAX_SAFE_INTEGER,
+      });
 
     const res = await api(app)
       .post('/v1/events')
